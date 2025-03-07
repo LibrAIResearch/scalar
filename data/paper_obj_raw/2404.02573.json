@@ -1,0 +1,1075 @@
+{
+  "title": "Knowledge Distillation with Multi-granularity Mixture of Priors for Image Super-Resolution",
+  "abstract": "Knowledge distillation (KD) is a promising yet challenging model compression\ntechnique that transfers rich learning representations from a well-performing\nbut cumbersome teacher model to a compact student model. Previous methods for\nimage super-resolution (SR) mostly compare the feature maps directly or after\nstandardizing the dimensions with basic algebraic operations (e.g. average,\ndot-product). However, the intrinsic semantic differences among feature maps\nare overlooked, which are caused by the disparate expressive capacity between\nthe networks. This work presents MiPKD, a multi-granularity mixture of prior KD\nframework, to facilitate efficient SR model through the feature mixture in a\nunified latent space and stochastic network block mixture. Extensive\nexperiments demonstrate the effectiveness of the proposed MiPKD method.",
+  "paper_id": "http://arxiv.org/abs/2404.02573v1",
+  "markdown_content": "(eccv) Package eccv Warning: Package ‘hyperref’ is loaded with option ‘pagebackref’, which is \\*not\\* recommended for camera-ready version\n\n# Knowledge Distillation with Multi-granularity Mixture of Priors for Image Super-Resolution\n\nSimiao Li1   Yun Zhang1,2∗\\*   Wei Li1   Hanting Chen1\n\nWenjia Wang2   Bingyi Jing3   Shaohui Lin4   Jie Hu1\n\n1Huawei Noah’s Ark Lab\n\n2Hong Kong University of Science and Technology (GZ)\n\n3Southern University of Science and Technology\n\n4East China Normal University\n\n{wei.lee, lisimiao}@huawei.comyzhangjy@connect.ust.hk\nBoth authors contributed equally to this researchCorresponding author: hujie23@huawei.com\n\n###### Abstract\n\nKnowledge distillation (KD) is a promising yet challenging model compression technique that transfers rich learning representations from a well-performing but cumbersome teacher model to a compact student model.\nPrevious methods for image super-resolution (SR) mostly compare the feature maps directly or after standardizing the dimensions with basic algebraic operations (e.g. average, dot-product).\nHowever, the intrinsic semantic differences among feature maps are overlooked, which are caused by the disparate expressive capacity between the networks.\nThis work presents MiPKD, a multi-granularity mixture of prior KD framework, to facilitate efficient SR model\nthrough the feature mixture in a unified latent space and stochastic network block mixture.\nExtensive experiments demonstrate the effectiveness of the proposed MiPKD method.\n\n###### Keywords:\n\nImage Super-Resolution Knowledge Distillation Model Compression\n\n## 1 Introduction\n\nSuper-resolution (SR) is a fundamental yet challenging task in the field of computer vision (CV), to restore high-resolution (HR) images from their low-resolution (LR) counterparts \\[ [7](https://ar5iv.org/html/2404.02573#bib.bib7 \"\"), [20](https://ar5iv.org/html/2404.02573#bib.bib20 \"\"), [3](https://ar5iv.org/html/2404.02573#bib.bib3 \"\")\\]. In the past decade, convolutional neural network (CNN) \\[ [6](https://ar5iv.org/html/2404.02573#bib.bib6 \"\"), [16](https://ar5iv.org/html/2404.02573#bib.bib16 \"\"), [21](https://ar5iv.org/html/2404.02573#bib.bib21 \"\"), [49](https://ar5iv.org/html/2404.02573#bib.bib49 \"\"), [5](https://ar5iv.org/html/2404.02573#bib.bib5 \"\")\\] and Transformer \\[ [3](https://ar5iv.org/html/2404.02573#bib.bib3 \"\"), [20](https://ar5iv.org/html/2404.02573#bib.bib20 \"\"), [41](https://ar5iv.org/html/2404.02573#bib.bib41 \"\"), [44](https://ar5iv.org/html/2404.02573#bib.bib44 \"\"), [46](https://ar5iv.org/html/2404.02573#bib.bib46 \"\")\\] have demonstrated exceptional success for SR.\nHowever, it is impractical to directly deploy these models on resource-limited devices due to their heavy computation overload \\[ [51](https://ar5iv.org/html/2404.02573#bib.bib51 \"\")\\].\nConsequently, there has been a growing interest in model compression for SR models to facilitate their real-world applications.\n\n![Refer to caption](https://ar5iv.org/html/2404.02573/assets/x1.png)Figure 1: The PSNR of student models on Urban100 testset under different compression settings. In the depth compression (a), there are barely KD methods outperforming vanilla logits-KD. For width compression (b), CSD performs well but only satisfies this setting. For compounded compression, almost all KD underperforms training without KD.\n\nKnowledge distillation, emerging as an effective model compression method, can significantly reduce the computation overload, facilitating the student by transferring dark knowledge from the well-performed but cumbersome teacher model to the compact one \\[ [48](https://ar5iv.org/html/2404.02573#bib.bib48 \"\"), [23](https://ar5iv.org/html/2404.02573#bib.bib23 \"\"), [15](https://ar5iv.org/html/2404.02573#bib.bib15 \"\"), [18](https://ar5iv.org/html/2404.02573#bib.bib18 \"\")\\]. Compared with other model compression techniques, such as quantization \\[ [19](https://ar5iv.org/html/2404.02573#bib.bib19 \"\"), [13](https://ar5iv.org/html/2404.02573#bib.bib13 \"\"), [24](https://ar5iv.org/html/2404.02573#bib.bib24 \"\")\\], pruning \\[ [38](https://ar5iv.org/html/2404.02573#bib.bib38 \"\"), [40](https://ar5iv.org/html/2404.02573#bib.bib40 \"\")\\], compact block design \\[ [1](https://ar5iv.org/html/2404.02573#bib.bib1 \"\"), [33](https://ar5iv.org/html/2404.02573#bib.bib33 \"\"), [27](https://ar5iv.org/html/2404.02573#bib.bib27 \"\"), [37](https://ar5iv.org/html/2404.02573#bib.bib37 \"\")\\], and neural architecture search (NAS) \\[ [53](https://ar5iv.org/html/2404.02573#bib.bib53 \"\"), [36](https://ar5iv.org/html/2404.02573#bib.bib36 \"\"), [31](https://ar5iv.org/html/2404.02573#bib.bib31 \"\")\\], KD is a widely recognized method that can be combined with aforementioned techniques to further improve the compactness of student model.\nKD for SR has also attracted wide attention recently and gained remarkable progress \\[ [19](https://ar5iv.org/html/2404.02573#bib.bib19 \"\"), [18](https://ar5iv.org/html/2404.02573#bib.bib18 \"\"), [48](https://ar5iv.org/html/2404.02573#bib.bib48 \"\"), [11](https://ar5iv.org/html/2404.02573#bib.bib11 \"\"), [40](https://ar5iv.org/html/2404.02573#bib.bib40 \"\"), [52](https://ar5iv.org/html/2404.02573#bib.bib52 \"\")\\]. These methods can be roughly categorized into response-based KD and feature-based KD, the former utilizes the output of the teacher model to supervise the training process of the student model, while the latter tries to align the\nhidden representations between the teacher model and the student model \\[ [9](https://ar5iv.org/html/2404.02573#bib.bib9 \"\"), [40](https://ar5iv.org/html/2404.02573#bib.bib40 \"\"), [11](https://ar5iv.org/html/2404.02573#bib.bib11 \"\")\\].\n\nThough previous KD methods show promising results in SR, several issues hinder the wide applications of them. First, existing KD techniques for SR are tailored to specific teacher-student architectures. They support either network depth ( [Fig.1](https://ar5iv.org/html/2404.02573#S1.F1 \"In 1 Introduction ‣ Knowledge Distillation with Multi-granularity Mixture of Priors for Image Super-Resolution\") (a)) or network width ( [Fig.1](https://ar5iv.org/html/2404.02573#S1.F1 \"In 1 Introduction ‣ Knowledge Distillation with Multi-granularity Mixture of Priors for Image Super-Resolution\") (b)) compression \\[ [11](https://ar5iv.org/html/2404.02573#bib.bib11 \"\")\\], and deteriorates the student dramatically when adopting them into another setting. For instance, FAKD \\[ [11](https://ar5iv.org/html/2404.02573#bib.bib11 \"\")\\] boosts the student model in depth compression but deteriorates the student when applied to a width compression circumstance. CSD \\[ [40](https://ar5iv.org/html/2404.02573#bib.bib40 \"\")\\] improves the student model significantly (Fig. [1](https://ar5iv.org/html/2404.02573#S1.F1 \"Figure 1 ‣ 1 Introduction ‣ Knowledge Distillation with Multi-granularity Mixture of Priors for Image Super-Resolution\") (b)) but is not compatible with depth compression in Fig. [1](https://ar5iv.org/html/2404.02573#S1.F1 \"Figure 1 ‣ 1 Introduction ‣ Knowledge Distillation with Multi-granularity Mixture of Priors for Image Super-Resolution\") (a).\nIt’s necessary to propose a more flexible KD framework which is closer to real-world application.\nWhile few methods have discussed the compounded compression on both depth and width dimension, which is a much more general but challenging scenario.\nTo be specific, FAKD and those feature-based KD methods introduced from high-level CV, e.g. RKD \\[ [28](https://ar5iv.org/html/2404.02573#bib.bib28 \"\")\\], AT \\[ [43](https://ar5iv.org/html/2404.02573#bib.bib43 \"\")\\], and FitNet \\[ [32](https://ar5iv.org/html/2404.02573#bib.bib32 \"\")\\] hardly benefit the student model.\n[Fig.1](https://ar5iv.org/html/2404.02573#S1.F1 \"In 1 Introduction ‣ Knowledge Distillation with Multi-granularity Mixture of Priors for Image Super-Resolution\") (a) shows that the previous depth and channel distillation methods can just obtain a marginal performance gain or even deteriorate the student in most cases.\nTo alleivate these issues, in this paper, we present a novel knowledge distillation framework for SR models, the multi-granularity mixture of prior knowledge distillation (MiPKD), that is universally applicable to a wide array of teacher-student architectures at feature and block levels.\nSpecifically, the feature prior mixer first dynamically combines priors from the teacher and the student and then is\nsupervised by the teacher’s feature map. The block prior mixer adopts a coarser-grained prior mixture at the network block level that dynamically switches the normal forward propagation path to the teacher or the student. The final output of this newly ensembled sub-network is further supervised by the teacher’s response.\n\nIn summary, the main contributions of this paper are as follows:\n\n- ∙∙\\\\bullet\n\n\nWe present MiPKD, a KD framework for efficient SR, transferring the teacher model’s prior knowledge from both network width and depth levels. It’s more flexible and applicable to a wide array of teacher-student architectures.\n\n- ∙∙\\\\bullet\n\n\nWe propose the feature and block prior mixers to reduce the capacity disparity between teacher and student models for better alignment. The former combines the feature maps in a unified latent space, while the latter assembles dynamic combination of network blocks from teacher and student models.\n\n- ∙∙\\\\bullet\n\n\nExtensive experiments on various benchmarks show that the proposed MiPKD framework significantly outperforms the previous arts.\n\n\n## 2 Related Work\n\nDeep SISR Models. Deep neural networks (DNNs) based image super-resolution have shown impressive success. Dong et al.\\[ [6](https://ar5iv.org/html/2404.02573#bib.bib6 \"\")\\] firstly introduced CNN with only three Conv layers for image SR. Residual learning was introduced in VDSR \\[ [16](https://ar5iv.org/html/2404.02573#bib.bib16 \"\")\\], reaching 20 Conv layers. Lim et al. proposed EDSR \\[ [21](https://ar5iv.org/html/2404.02573#bib.bib21 \"\")\\] with simplified residual block \\[ [10](https://ar5iv.org/html/2404.02573#bib.bib10 \"\")\\]. Zhang et al. proposed an even deeper network RCAN \\[ [49](https://ar5iv.org/html/2404.02573#bib.bib49 \"\")\\].\nLater, Mei et al. proposed CSNLN \\[ [50](https://ar5iv.org/html/2404.02573#bib.bib50 \"\")\\] by combining feature correlations, and external statistics. Most of them have achieved state-of-the-art results with deeper and wider networks. Recently, Transformer has gained a surge of interest for image restoration. Chen et al. proposed the first pre-trained image processing transformer IPT \\[ [3](https://ar5iv.org/html/2404.02573#bib.bib3 \"\")\\].\nSwinIR \\[ [20](https://ar5iv.org/html/2404.02573#bib.bib20 \"\")\\] first applies the residual Swin Transformer block to the image restoration for deep feature extraction.\nRestormer \\[ [44](https://ar5iv.org/html/2404.02573#bib.bib44 \"\")\\] proposed a multi-scale hierarchical design that incorporates efficient Transformer blocks by modifying self-attention and MLP.\nSimilarly, Uformer \\[ [41](https://ar5iv.org/html/2404.02573#bib.bib41 \"\")\\] proposed a LeWin Transformer block for image restoration. While CNNs and Transformers have demonstrated impressive performance in SISR, they suffer from heavy memory cost and computational overhead.\n\nEfficient SISR.\nTo improve the model efficiency, various approaches have been proposed to reduce model’s redundancy, such as neural architecture search (NAS) \\[ [4](https://ar5iv.org/html/2404.02573#bib.bib4 \"\"), [34](https://ar5iv.org/html/2404.02573#bib.bib34 \"\")\\], compact block design \\[ [1](https://ar5iv.org/html/2404.02573#bib.bib1 \"\"), [33](https://ar5iv.org/html/2404.02573#bib.bib33 \"\"), [27](https://ar5iv.org/html/2404.02573#bib.bib27 \"\"), [37](https://ar5iv.org/html/2404.02573#bib.bib37 \"\"), [41](https://ar5iv.org/html/2404.02573#bib.bib41 \"\"), [44](https://ar5iv.org/html/2404.02573#bib.bib44 \"\")\\], pruning \\[ [38](https://ar5iv.org/html/2404.02573#bib.bib38 \"\"), [40](https://ar5iv.org/html/2404.02573#bib.bib40 \"\")\\], and low-bit quantization \\[ [24](https://ar5iv.org/html/2404.02573#bib.bib24 \"\"), [19](https://ar5iv.org/html/2404.02573#bib.bib19 \"\"), [13](https://ar5iv.org/html/2404.02573#bib.bib13 \"\")\\]. The strength of NAS manifests in searching the optimal architecture but is time-consuming and computationally expensive due to the massive search space.\nAfterwards, compact SR model designs have attracted rising attention and achieved remarkable progress \\[ [47](https://ar5iv.org/html/2404.02573#bib.bib47 \"\"), [15](https://ar5iv.org/html/2404.02573#bib.bib15 \"\"), [1](https://ar5iv.org/html/2404.02573#bib.bib1 \"\"), [8](https://ar5iv.org/html/2404.02573#bib.bib8 \"\")\\].\nZhang et al. proposed ELAN \\[ [47](https://ar5iv.org/html/2404.02573#bib.bib47 \"\")\\] that designs a group-wise multi-scale self-attention (GMSA) module to exploit the long-range image dependency, achieving even better results against the transformer-based SR models but with significantly less complexity.\nPruning \\[ [38](https://ar5iv.org/html/2404.02573#bib.bib38 \"\"), [40](https://ar5iv.org/html/2404.02573#bib.bib40 \"\")\\] and quantization \\[ [24](https://ar5iv.org/html/2404.02573#bib.bib24 \"\"), [19](https://ar5iv.org/html/2404.02573#bib.bib19 \"\"), [13](https://ar5iv.org/html/2404.02573#bib.bib13 \"\")\\] are other two types of methods to remove model redundancy by sparsity and low-bit quantization mappings. Although those lightweight networks have achieved great progress, they still need considerable extra computation resources.\n\nKnowledge Distillation for SISR.\nKnowledge distillation is widely recognized as an effective model compression method that can significantly reduce the computation overload and improve student’s capability by transferring dark knowledge from the large teacher model to the lightweight student model \\[ [9](https://ar5iv.org/html/2404.02573#bib.bib9 \"\"), [42](https://ar5iv.org/html/2404.02573#bib.bib42 \"\"), [12](https://ar5iv.org/html/2404.02573#bib.bib12 \"\")\\].\nRecently, several attempts have also been made for image super-resolution knowledge distillation.\nLee _et al_. \\[ [18](https://ar5iv.org/html/2404.02573#bib.bib18 \"\")\\] first pre-trained the encoder and decoder using the pairs of the same HR images, and the privileged information is extracted from the decoder to obtain the statistical output location and scale maps as the knowledge.\nHe _et al._ proposed FAKD \\[ [11](https://ar5iv.org/html/2404.02573#bib.bib11 \"\")\\] to distill the second-order statistical information from the affinity matrix of feature maps.\nWang _et al._ proposed CSD that incorporates self-distillation and contrastive learning \\[ [40](https://ar5iv.org/html/2404.02573#bib.bib40 \"\")\\] by introducing extra simply upsampled LR images as negative samples.\nHowever, none of the existing SRKD methods have discussed how to customize a proper teacher for a student with limited capacity or whether a stronger teacher consistently benefits the capacity-limited student.\nFurthermore, existing SRKD techniques for SR are tailored to specific teacher-student architectures, focusing on either network depth \\[ [40](https://ar5iv.org/html/2404.02573#bib.bib40 \"\")\\] or channel compression \\[ [11](https://ar5iv.org/html/2404.02573#bib.bib11 \"\")\\], which is infeasible for practical compounded compression applications.\n\n## 3 Methodology\n\n![Refer to caption](https://ar5iv.org/html/2404.02573/assets/x2.png)Figure 2: Framework of the MiPKD method. MiPKD utilizes the multi-granularity prior mixture to constrain the KD process.\nThe feature prior mixer dynamically combines priors from the teacher and student, and the block prior mixer adopts a coarser-grained prior mixture at the network block level.\n\n### 3.1 Preliminaries and Notations\n\nGiven a low-resolution input image IL​Rsubscript𝐼𝐿𝑅I\\_{LR}, the deep SR model ℱ​(⋅)ℱ⋅\\\\mathcal{F}(\\\\cdot) aims to reconstruct the high-resolution image IS​R=ℱ​(IL​R;Θ)subscript𝐼𝑆𝑅ℱsubscript𝐼𝐿𝑅ΘI\\_{SR}=\\\\mathcal{F}(I\\_{LR};\\\\Theta) with fine details and looking similar with corresponding high-resolution image IH​Rsubscript𝐼𝐻𝑅I\\_{HR}, where ΘΘ\\\\Theta is the model parameters.\nExisting KD methods for SR can be divided into two categories: logits-based and feature-based.\nThe former compels the student model ℱSsubscriptℱ𝑆\\\\mathcal{F}\\_{S} to produce the same prediction as the teacher model\n\n|     |     |     |     |\n| --- | --- | --- | --- |\n|  | ℒl​o​g​i​t​s=𝒟l​o​g​i​t​s​(IS​RS,IS​RT)subscriptℒ𝑙𝑜𝑔𝑖𝑡𝑠subscript𝒟𝑙𝑜𝑔𝑖𝑡𝑠superscriptsubscript𝐼𝑆𝑅𝑆superscriptsubscript𝐼𝑆𝑅𝑇\\\\mathcal{L}\\_{logits}=\\\\mathcal{D}\\_{logits}(I\\_{SR}^{S},~{}I\\_{SR}^{T}) |  | (1) |\n\nwhere IS​RS=ℱS​(IL​R;ΘS)superscriptsubscript𝐼𝑆𝑅𝑆subscriptℱ𝑆subscript𝐼𝐿𝑅superscriptΘ𝑆I\\_{SR}^{S}=\\\\mathcal{F}\\_{S}(I\\_{LR};\\\\Theta^{S}) and IS​RT=ℱT​(IL​R;ΘT)superscriptsubscript𝐼𝑆𝑅𝑇subscriptℱ𝑇subscript𝐼𝐿𝑅superscriptΘ𝑇I\\_{SR}^{T}=\\\\mathcal{F}\\_{T}(I\\_{LR};\\\\Theta^{T}) represent the output SR images of the student and teacher models, and 𝒟l​o​g​i​t​ssubscript𝒟𝑙𝑜𝑔𝑖𝑡𝑠\\\\mathcal{D}\\_{logits} is the loss function that measures the difference between two models’ outputs, e.g. the L1subscript𝐿1L\\_{1} or L2subscript𝐿2L\\_{2} loss function.\nSimilarly, the feature-based KD methods aim to mimic the rich implicit learning representations between the teacher and the student, which also can be represented as an auxiliary loss item:\n\n|     |     |     |     |\n| --- | --- | --- | --- |\n|  | ℒf​e​a​t=𝒟f​e​a​t​(𝒯s​(FkS),𝒯t​(FkT))subscriptℒ𝑓𝑒𝑎𝑡subscript𝒟𝑓𝑒𝑎𝑡subscript𝒯𝑠subscriptsuperscriptF𝑆𝑘subscript𝒯𝑡subscriptsuperscriptF𝑇𝑘\\\\mathcal{L}\\_{feat}=\\\\mathcal{D}\\_{feat}(\\\\mathcal{T}\\_{s}(\\\\mathrm{F}^{S}\\_{k}),~{}\\\\mathcal{T}\\_{t}(\\\\mathrm{F}^{T}\\_{k})) |  | (2) |\n\nwhere FkSsubscriptsuperscriptF𝑆𝑘\\\\mathrm{F}^{S}\\_{k} and FkTsubscriptsuperscriptF𝑇𝑘{\\\\mathrm{F}}^{T}\\_{k} denote the feature maps of the student model and the teacher model at the k𝑘k-th distillation position, respectively. 𝒯tsubscript𝒯𝑡\\\\mathcal{T}\\_{t} and 𝒯ssubscript𝒯𝑠\\\\mathcal{T}\\_{s}\nare the transformations applied on raw feature maps and 𝒟f​e​a​tsubscript𝒟𝑓𝑒𝑎𝑡\\\\mathcal{D}\\_{feat} is the loss function for feature distillation.\n\n### 3.2 Mixture of Prior Knowledge Distillation\n\nAccording to earlier research and analysis, there is a negative correlation between student performance and the teacher’s model’s capacity as the capacity gap widens between students and teachers \\[ [26](https://ar5iv.org/html/2404.02573#bib.bib26 \"\")\\]. Since the student models struggle to grasp the capacity to extract semantic information from the bigger model. In the process of feature distillation, it is crucial to illustrate the effective retrieval and transfer of the teacher’s prior knowledge to the student network.\nOur proposed feature distillation method,\nsurpasses FAKD, CSD and other deep or channel kd methods as Fig. [1](https://ar5iv.org/html/2404.02573#S1.F1 \"Figure 1 ‣ 1 Introduction ‣ Knowledge Distillation with Multi-granularity Mixture of Priors for Image Super-Resolution\") shown. This is accomplished by incorporating the teacher’s knowledge with the student’s network at feature and block levels, within a stochastic dynamic framework. This approach reduces the capacity disparity between the teacher and student, thereby enhancing the performance of the student model.\n\nFeature Prior Mixer.\n\nFig. [2](https://ar5iv.org/html/2404.02573#S3.F2 \"Figure 2 ‣ 3 Methodology ‣ Knowledge Distillation with Multi-granularity Mixture of Priors for Image Super-Resolution\") illustrates the hybrid prior knowledge framework at the feature level, including the encoder modules for the teacher and student feature maps and the decoder module for the fused feature map. At the k𝑘k-th feature distillation position, initially, the feature maps of both the student model\nFkSsubscriptsuperscriptF𝑆𝑘\\\\mathrm{\\\\textbf{F}}^{S}\\_{k}\nand teacher model FkTsubscriptsuperscriptF𝑇𝑘\\\\mathrm{\\\\textbf{F}}^{T}\\_{k} are fed into the respective encoder models to obtain the representations\nZkSsubscriptsuperscriptZ𝑆𝑘\\\\mathrm{\\\\textbf{Z}}^{S}\\_{k}, ZkT∈ℝC×H×WsubscriptsuperscriptZ𝑇𝑘superscriptℝ𝐶𝐻𝑊\\\\mathrm{\\\\textbf{Z}}^{T}\\_{k}\\\\in{\\\\mathbb{R}}^{C\\\\times H\\\\times W}in a unified latent space, where C,H,W𝐶𝐻𝑊C,H,W are the dimension of the feature maps.\nThen the encoded feature maps are fused according to a random 3D-mask 𝐈M∈{0,1}C×H×Wsuperscript𝐈𝑀superscript01𝐶𝐻𝑊\\\\mathbf{I}^{M}\\\\in\\\\{0,1\\\\}^{C\\\\times H\\\\times W} as\n\n|     |     |     |     |\n| --- | --- | --- | --- |\n|  | FkE=D​(ZkS⊙(1−𝐈M)+𝐙kT⊙(𝐈M)),subscriptsuperscript𝐹𝐸𝑘𝐷direct-productsubscriptsuperscript𝑍𝑆𝑘1superscript𝐈𝑀direct-productsubscriptsuperscript𝐙𝑇𝑘superscript𝐈𝑀F^{E}\\_{k}=D(Z^{S}\\_{k}\\\\odot(1-\\\\mathbf{I}^{M})+\\\\mathbf{Z}^{T}\\_{k}\\\\odot(\\\\mathbf{I}^{M})), |  | (3) |\n\nwhere D𝐷D is a decoder that reverts the fused feature map as the enhanced feature map representation FkEsubscriptsuperscriptF𝐸𝑘\\\\mathrm{\\\\textbf{F}}^{E}\\_{k}, and ⊙direct-product\\\\odot denotes the element-wise product between matrices.\nThe student’s feature map is combined with the teacher’s prior knowledge with an encoder-decoder structure to reduce the discrepancy between them at the feature level. 𝐅kEsubscriptsuperscript𝐅𝐸𝑘\\\\mathbf{F}^{E}\\_{k} is subsequently utilized as an input to the subsequent block level prior mixer module.\nThe feature distillation loss ℒkf​e​a​tFsubscriptsuperscriptℒ𝑓𝑒𝑎subscript𝑡𝐹𝑘\\\\mathcal{L}^{feat\\_{F}}\\_{k} of Feature Prior Mixer is computed between 𝐅kEsubscriptsuperscript𝐅𝐸𝑘\\\\mathbf{F}^{E}\\_{k} and 𝐅kTsubscriptsuperscript𝐅𝑇𝑘\\\\mathbf{F}^{T}\\_{k} as\n\n|     |     |     |     |\n| --- | --- | --- | --- |\n|  | ℒkf​e​a​tF=𝒟f​e​a​t​(FkE,missing​FkT)subscriptsuperscriptℒ𝑓𝑒𝑎subscript𝑡𝐹𝑘subscript𝒟𝑓𝑒𝑎𝑡subscriptsuperscriptF𝐸𝑘missingsubscriptsuperscriptF𝑇𝑘\\\\mathcal{L}^{feat\\_{F}}\\_{k}=\\\\mathcal{D}\\_{feat}(\\\\mathrm{\\\\textbf{F}}^{E}\\_{k},~{}\\\\mathcal{\\\\mathrm{missing}}{\\\\textbf{F}}^{T}\\_{k}) |  | (4) |\n\nAdditionally, in order to enhance the reconstruction capability of the decoder and ensure the stability of the training process,\nthe auxiliary enhanced feature map FkE′subscriptsuperscriptFsuperscript𝐸′𝑘\\\\mathrm{\\\\textbf{F}}^{{}^{\\\\prime}E}\\_{k} is obtained by directly inputting the teacher’s feature map to the teacher’s encoder and decoder without applying masking and mixing strategy. The auxiliary “auto-encoder” loss ℒka​esubscriptsuperscriptℒ𝑎𝑒𝑘\\\\mathcal{L}^{ae}\\_{k} is computed\nas\n\n|     |     |     |     |\n| --- | --- | --- | --- |\n|  | ℒka​e=𝒟f​e​a​t​(FkE′,missing​FkT).subscriptsuperscriptℒ𝑎𝑒𝑘subscript𝒟𝑓𝑒𝑎𝑡subscriptsuperscriptFsuperscript𝐸′𝑘missingsubscriptsuperscriptF𝑇𝑘\\\\mathcal{L}^{ae}\\_{k}=\\\\mathcal{D}\\_{feat}(\\\\mathrm{\\\\textbf{F}}^{{}^{\\\\prime}E}\\_{k},~{}\\\\mathcal{\\\\mathrm{missing}}{\\\\textbf{F}}^{T}\\_{k}). |  | (5) |\n\nIt requires the encoder and decoder to serve as an auto-encoder structure, ensuring the decoded enhanced feature map is comparable with 𝐅𝐤𝐓superscriptsubscript𝐅𝐤𝐓\\\\mathbf{F\\_{k}^{T}}. The enhancement of the decoder contributes to the overall effectiveness of the feature prior mixer module.\n\nBlock Prior Mixer.\n\nExisting feature-based distillation methods on SR tasks mostly align the feature representations in the original space with Mean Absolute Error (MAE) or Mean Square Error (MSE).\nPrevious studies \\[ [29](https://ar5iv.org/html/2404.02573#bib.bib29 \"\")\\] shows that distinct controllability properties and semantics may exist among the network of the similar architecture with various weights.\nStudent and teacher models with various dimensional space typically exist seperate distribution of semantic information \\[ [22](https://ar5iv.org/html/2404.02573#bib.bib22 \"\")\\].\nTherefore, solely aligning features at the present distillation node with the same magnitudes of distance can leads the student model to learn entirely different information.\nTo tackle this issue, we propose to align the networks’ ability of processing and representing information by assembling a dynamic combination of blocks and transmitting the fusion information from the Feature Prior Mixer to the enhanced network.\n\nTo construct an enhanced network (ℱEb​l​o​c​ksubscriptsuperscriptℱ𝑏𝑙𝑜𝑐𝑘𝐸\\\\mathcal{F}^{block}\\_{E}) at distillation position k𝑘k, according to the Block Prior Mixing Option RksubscriptR𝑘\\\\mathrm{R}\\_{k} and DksubscriptD𝑘\\\\mathrm{D}\\_{k} randomly sampled from {0,1}01\\\\{0,1\\\\}, the output of Feature Prior Mixer 𝐅kEsubscriptsuperscript𝐅𝐸𝑘\\\\mathbf{F}^{E}\\_{k} is forwarding propagated to the student network (Rk=1subscriptR𝑘1\\\\mathrm{R}\\_{k}=1,Dk=1subscriptD𝑘1\\\\mathrm{D}\\_{k}=1), teacher network (Rk=0subscriptR𝑘0\\\\mathrm{R}\\_{k}=0,Dk=1subscriptD𝑘1\\\\mathrm{D}\\_{k}=1), or deposed (Dk=0subscriptD𝑘0\\\\mathrm{D}\\_{k}=0), as the dashed path exemplified in Figure [2](https://ar5iv.org/html/2404.02573#S3.F2 \"Figure 2 ‣ 3 Methodology ‣ Knowledge Distillation with Multi-granularity Mixture of Priors for Image Super-Resolution\"). ℬS(k)subscriptℬsubscript𝑆𝑘\\\\mathcal{B}\\_{{S}\\_{(k)}} and ℬT(k)subscriptℬsubscript𝑇𝑘\\\\mathcal{B}\\_{{T}\\_{(k)}} represent the block from student and teacher models at the current position respectively.\nℬO(k)subscriptℬsubscript𝑂𝑘\\\\mathcal{B}\\_{{O}\\_{(k)}} represents the mixed block at the current position based on RksubscriptR𝑘\\\\mathrm{R}\\_{k} and DksubscriptD𝑘\\\\mathrm{D}\\_{k} as formula [6](https://ar5iv.org/html/2404.02573#S3.E6 \"Equation 6 ‣ 3.2 Mixture of Prior Knowledge Distillation ‣ 3 Methodology ‣ Knowledge Distillation with Multi-granularity Mixture of Priors for Image Super-Resolution\") shown.\n\n|     |     |     |     |\n| --- | --- | --- | --- |\n|  | ℬO(k)=Dk​(Rk​ℬS(k)+(1−Rk)​ℬT(k)).subscriptℬsubscript𝑂𝑘subscriptD𝑘subscriptR𝑘subscriptℬsubscript𝑆𝑘1subscriptR𝑘subscriptℬsubscript𝑇𝑘\\\\mathcal{B}\\_{{O}\\_{(k)}}=\\\\mathrm{D}\\_{k}(\\\\mathrm{R}\\_{k}\\\\mathcal{B}\\_{{S}\\_{(k)}}+(1-\\\\mathrm{R}\\_{k})\\\\mathcal{B}\\_{{T}\\_{(k)}}). |  | (6) |\n\nBased on this process, denote the output of such concatenated network as IS​REsubscriptsuperscript𝐼𝐸𝑆𝑅I^{E}\\_{SR},\n\n|     |     |     |     |\n| --- | --- | --- | --- |\n|  | IS​RE=ℱEb​l​o​c​k​(IL​R;ΘS)=ℬO(k)​(𝐅kE)superscriptsubscript𝐼𝑆𝑅𝐸subscriptsuperscriptℱ𝑏𝑙𝑜𝑐𝑘𝐸subscript𝐼𝐿𝑅superscriptΘ𝑆subscriptℬsubscript𝑂𝑘subscriptsuperscript𝐅𝐸𝑘{I}\\_{SR}^{E}=\\\\mathcal{F}^{block}\\_{E}(I\\_{LR};\\\\Theta^{S})={\\\\mathcal{B}\\_{{O}\\_{(k)}}}(\\\\mathbf{F}^{E}\\_{k}) |  | (7) |\n\nThe feature knowledge distillation loss based on Block Prior Mixer is derived through the ultimate combined network output with the teacher output and ground truth as formula [9](https://ar5iv.org/html/2404.02573#S3.E9 \"Equation 9 ‣ 3.2 Mixture of Prior Knowledge Distillation ‣ 3 Methodology ‣ Knowledge Distillation with Multi-granularity Mixture of Priors for Image Super-Resolution\") shown, where w𝑤w represents the trade-off between the supervisions from teacher model and ground-truth (GT). For the SR tasks, w equals to 0.5 in the following experiments.\n\n|     |     |     |     |\n| --- | --- | --- | --- |\n|  | Lkf​e​a​tB=w​𝒟​(IS​RE,IS​RT)+(1−w)​𝒟​(IS​RE,IH​R)subscriptsuperscript𝐿𝑓𝑒𝑎subscript𝑡𝐵𝑘𝑤𝒟superscriptsubscript𝐼𝑆𝑅𝐸superscriptsubscript𝐼𝑆𝑅𝑇1𝑤𝒟superscriptsubscript𝐼𝑆𝑅𝐸subscript𝐼𝐻𝑅{L}^{feat\\_{B}}\\_{k}=w\\\\mathcal{D}(I\\_{SR}^{E},~{}I\\_{SR}^{T})+(1-w)\\\\mathcal{D}(I\\_{SR}^{E},~{}I\\_{HR}) |  | (8) |\n\nIn addition, Lkf​e​a​tBsuperscriptsubscript𝐿𝑘𝑓𝑒𝑎subscript𝑡𝐵L\\_{k}^{feat\\_{B}} is ignored if the k𝑘k-th feature distillation position is dropped out. It is anticipated that there will be an attainment of interchangeability between the corresponding teacher and student network blocks, allowing the student to inherit and replicate the capabilities of the teacher model.\n\nThe Whole Pipeline.\n\nIn general,\nfor each feature distillation position k𝑘k, based on the pair of 𝐅kTsubscriptsuperscript𝐅𝑇𝑘\\\\mathbf{F}^{T}\\_{k} and 𝐅kSsubscriptsuperscript𝐅𝑆𝑘\\\\mathbf{F}^{S}\\_{k} as the input of Feature Prior Mixer, the random masked feature map of student is populated and fused with the teacher’s as 𝐅kEsubscriptsuperscript𝐅𝐸𝑘{\\\\mathbf{F}}^{E}\\_{k}, and the Lkf​e​a​tEsubscriptsuperscript𝐿𝑓𝑒𝑎subscript𝑡𝐸𝑘{L}^{feat\\_{E}}\\_{k} is computed to align with the initial teacher feature map in the same distribution space.\nMeanwhile, RksubscriptR𝑘\\\\mathrm{R}\\_{k} and DksubscriptD𝑘\\\\mathrm{D}\\_{k} determine the transmission direction of 𝐅kEsubscriptsuperscript𝐅𝐸𝑘{\\\\mathbf{F}}^{E}\\_{k} for each iteration, the students’ network for random block information is also exchanged and transmitted by the teacher’s as Fig. [2](https://ar5iv.org/html/2404.02573#S3.F2 \"Figure 2 ‣ 3 Methodology ‣ Knowledge Distillation with Multi-granularity Mixture of Priors for Image Super-Resolution\") shown.\nBesides logits-KD loss Ll​o​g​i​t​ssubscript𝐿𝑙𝑜𝑔𝑖𝑡𝑠{L}\\_{logits}, reconstruction loss Lr​e​csubscript𝐿𝑟𝑒𝑐{L}\\_{rec}, the feature losses in block level and feature level are accumulated:\n\n|     |     |     |     |\n| --- | --- | --- | --- |\n|  | Lt​o​t​a​l=λk​d​Ll​o​g​i​t​s+λr​e​c​Lr​e​c+∑k≤K(λf​e​a​t​Lkf​e​a​tE+λb​l​o​c​k​Lkf​e​a​tB).subscript𝐿𝑡𝑜𝑡𝑎𝑙subscript𝜆𝑘𝑑subscript𝐿𝑙𝑜𝑔𝑖𝑡𝑠subscript𝜆𝑟𝑒𝑐subscript𝐿𝑟𝑒𝑐subscript𝑘𝐾subscript𝜆𝑓𝑒𝑎𝑡subscriptsuperscript𝐿𝑓𝑒𝑎subscript𝑡𝐸𝑘subscript𝜆𝑏𝑙𝑜𝑐𝑘subscriptsuperscript𝐿𝑓𝑒𝑎subscript𝑡𝐵𝑘{L}\\_{total}={\\\\lambda\\_{kd}}{L}\\_{logits}+{\\\\lambda\\_{rec}}{L}\\_{rec}+\\\\sum\\_{k\\\\leq{K}}({\\\\lambda\\_{feat}}{L}^{feat\\_{E}}\\_{k}+{\\\\lambda\\_{block}}{L}^{feat\\_{B}}\\_{k}). |  | (9) |\n\nwhere λr​e​csubscript𝜆𝑟𝑒𝑐\\\\lambda\\_{rec}, λk​dsubscript𝜆𝑘𝑑\\\\lambda\\_{kd}, λf​e​a​tsubscript𝜆𝑓𝑒𝑎𝑡\\\\lambda\\_{feat}, λb​l​o​c​ksubscript𝜆𝑏𝑙𝑜𝑐𝑘\\\\lambda\\_{block} represent the weights for reconstruction loss, logits-kd loss, feature prior mixer and block prior mixer respectively.\nThe teacher’s prior knowledge is effectively transferred through this multi-level distillation process. The following experiments illustrate the efficiency of the above strategy.\n\nTable 1: SR model specifications on ×\\\\times4 experimental settings. The #Params, FLOPs and FPS are calculated with a 256×\\\\times256×\\\\times3 input image and FPS is computed on a single NVIDIA V100 GPU.\n\n|     |     |     |     |     |     |     |     |\n| --- | --- | --- | --- | --- | --- | --- | --- |\n| Model | Role | Network | FLOPs (G) | #Params (M) | FPS |\n| Channel | Block | Group |\n| EDSR | Teacher | 256 | 32 | - | 3293.35 | 43.09 | 3.2 |\n| Student 1 | 64 | 32 | - | 207.28 | 2.70 | 33.958 |\n| Student 2 | 64 | 16 | - | 129.97 (25.3×\\\\times) | 1.52 (28.3×\\\\times) | 53.3 |\n| RCAN | Teacher | 64 | 20 | 10 | 1044.03 | 15.59 | 6.3 |\n| Student | 64 | 6 | 10 | 366.98 | 5.17 | 12.3 |\n| SwinIR | Teacher | 180 | 6 | - | 861.27 | 11.90 M | 0.459 |\n| Student | 60 | 4 | - | 121.48 | 1.24 M | 0.874 |\n\n## 4 Experimental Results\n\n### 4.1 Experiment Setups\n\nBackbones and Evaluation. We use EDSR \\[ [21](https://ar5iv.org/html/2404.02573#bib.bib21 \"\")\\], RCAN \\[ [49](https://ar5iv.org/html/2404.02573#bib.bib49 \"\")\\], and SwinIR \\[ [20](https://ar5iv.org/html/2404.02573#bib.bib20 \"\")\\] as backbone models to verify the effectiveness of MiPKD and compare it with prior KD methods on ×2absent2\\\\times 2, ×3absent3\\\\times 3, and ×4absent4\\\\times 4 super-resolving scales.\nThe SR network specifications and some statistics are presented in [Tab.1](https://ar5iv.org/html/2404.02573#S3.T1 \"In 3.2 Mixture of Prior Knowledge Distillation ‣ 3 Methodology ‣ Knowledge Distillation with Multi-granularity Mixture of Priors for Image Super-Resolution\"), including the number of channels, residual blocks and residual groups (RCAN), number of parameters (#Params), FLOPs, and inference speed (frame per second, FPS). To evaluate the KD methods under high compression rate, we trained an extra EDSR student network.\n\nTable 2: Quantitative comparison of distilling EDSR \\[ [21](https://ar5iv.org/html/2404.02573#bib.bib21 \"\")\\] on the benchmark datasets. In these experiments, the EDSR student model of c64b32 is distilled by the teacher model of c256b32.\n\n| Scale | Method | Set5 | Set14 | BSD100 | Urban100 |\n| --- | --- | --- | --- | --- | --- |\n| PSNR/SSIM | PSNR/SSIM | PSNR/SSIM | PSNR/SSIM |\n| --- | --- | --- | --- |\n| x2 | Teacher | 38.20/0.9606 | 34.02/0.9204 | 32.37/0.9018 | 33.10/0.9363 |\n| Scratch | 38.00/0.9605 | 33.57/0.9171 | 32.17/0.8996 | 31.96/0.9268 |\n| KD | 38.04/0.9606 | 33.58/0.9172 | 32.19/0.8998 | 31.98/0.9269 |\n| RKD | 38.03/0.9606 | 33.57/0.9173 | 32.18/0.8998 | 31.96/0.9270 |\n| AT | 37.96/0.9603 | 33.48/0.9167 | 32.12/0.8990 | 31.71/0.9241 |\n| FitNet | 37.59/0.9589 | 33.09/0.9136 | 31.79/0.8953 | 30.46/0.9111 |\n| FAKD | 37.99/0.9606 | 33.60/0.9173 | 32.19/0.8998 | 32.04/0.9275 |\n| CSD | 38.06/0.9607 | 33.65/0.9179 | 32.22/0.9004 | 32.26/0.9300 |\n| MipKD | 38.16/0.9611 | 33.85/0.9194 | 32.27/0.9008 | 32.52/0.9318 |\n| x3 | Teacher | 34.76/0.929 | 30.66/0.8481 | 29.32/0.8104 | 29.02/0.8685 |\n| Scratch | 34.39/0.927 | 30.32/0.8417 | 29.08/0.8046 | 27.99/0.8489 |\n| KD | 34.43/0.9273 | 30.34/0.8422 | 29.10/0.8050 | 28.00/0.8491 |\n| RKD | 34.43/0.9274 | 30.33/0.8423 | 29.09/0.8051 | 27.96/0.8493 |\n| AT | 34.29/0.9262 | 30.26/0.8406 | 29.03/0.8035 | 27.76/0.8443 |\n| FitNet | 33.35/0.9178 | 29.71/0.8323 | 28.62/0.7949 | 26.61/0.8167 |\n| FAKD | 34.39/0.9272 | 30.34/0.8426 | 29.10/0.8052 | 28.07/0.8511 |\n| CSD | 34.45/0.9275 | 30.32/0.8430 | 29.11/0.8061 | 28.21/0.8549 |\n| MipKD | 34.59/0.9287 | 30.48/0.8447 | 29.19/0.8070 | 28.41/0.8571 |\n| x4 | Teacher | 32.65/0.9005 | 28.95/0.7903 | 27.81/0.744 | 26.87/0.8086 |\n| Scratch | 32.29/0.8965 | 28.68/0.7840 | 27.64/0.7380 | 26.21/0.7893 |\n| KD | 32.30/0.8965 | 28.70/0.7842 | 27.64/0.7382 | 26.21/0.7897 |\n| RKD | 32.30/0.8965 | 28.69/0.7842 | 27.64/0.7383 | 26.20/0.7899 |\n| AT | 32.22/0.8952 | 28.63/0.7825 | 27.59/0.7365 | 25.97/0.7825 |\n| FitNet | 31.65/0.8873 | 28.33/0.7768 | 27.38/0.7309 | 25.40/0.7637 |\n| FAKD | 32.27/0.8960 | 28.65/0.7836 | 27.62/0.7379 | 26.18/0.7895 |\n| CSD | 32.34/0.8974 | 28.72/0.7856 | 27.68/0.7396 | 26.34/0.7948 |\n| MipKD | 32.46/0.8981 | 28.79/0.7863 | 27.71/0.7400 | 26.45/0.7960 |\n\nTable 3: Quantitative comparison on RCAN \\[ [49](https://ar5iv.org/html/2404.02573#bib.bib49 \"\")\\] architecture on the benchmark datasets. In these experiments, the RCAN student model of c64b6 is distilled by the teacher model of c64b20.\n\n| Scale | Method | Set5 | Set14 | BSD100 | Urban100 |\n| --- | --- | --- | --- | --- | --- |\n| PSNR/SSIM | PSNR/SSIM | PSNR/SSIM | PSNR/SSIM |\n| --- | --- | --- | --- |\n| x2 | Teacher | 38.27/0.9614 | 34.13/0.9216 | 32.41/0.9027 | 33.34/0.9384 |\n| Scratch | 38.13/0.9610 | 33.78/0.9194 | 32.26/0.9007 | 32.63/0.9327 |\n| KD | 38.17/0.9611 | 33.83/0.9197 | 32.29/0.9010 | 32.67/0.9329 |\n| RKD | 38.18/0.9612 | 33.78/0.9191 | 32.29/0.9011 | 32.70/0.9330 |\n| AT | 38.13/0.9610 | 33.70/0.9187 | 32.25/0.9005 | 32.48/0.9313 |\n| FitNet | 37.97/0.9602 | 33.57/0.9174 | 32.19/0.8999 | 32.06/0.9279 |\n| FAKD | 38.17/0.9612 | 33.83/0.9199 | 32.29/0.9011 | 32.65/0.9330 |\n| MiPKD | 38.21/0.9613 | 33.92/0.9203 | 32.32/0.9015 | 32.83/0.9344 |\n| x3 | Teacher | 34.74/0.9299 | 30.65/0.8482 | 29.32/0.8111 | 29.09/0.8702 |\n| Scratch | 34.61/0.9288 | 30.45/0.8444 | 29.18/0.8074 | 28.59/0.8610 |\n| KD | 34.61/0.9291 | 30.47/0.8447 | 29.21/0.8080 | 28.62/0.8612 |\n| RKD | 34.67/0.9292 | 30.48/0.8451 | 29.21/0.8080 | 28.60/0.8610 |\n| AT | 34.55/0.9287 | 30.43/0.8438 | 29.17/0.8070 | 28.43/0.8577 |\n| FitNet | 34.21/0.9248 | 30.20/0.8399 | 29.05/0.8044 | 27.89/0.8472 |\n| FAKD | 34.63/0.9290 | 30.51/0.8453 | 29.21/0.8079 | 28.62/0.8612 |\n| MiPKD | 34.72/0.9296 | 30.55/0.8458 | 29.25/0.8087 | 28.76/0.8640 |\n| x4 | Teacher | 32.63/0.9002 | 28.87/0.7889 | 27.77/0.7436 | 26.82/0.8087 |\n| Scratch | 32.38/0.8971 | 28.69/0.7842 | 27.63/0.7379 | 26.36/0.7947 |\n| KD | 32.45/0.8980 | 28.76/0.7860 | 27.67/0.7400 | 26.49/0.7982 |\n| RKD | 32.39/0.8974 | 28.74/0.7856 | 27.67/0.7399 | 26.47/0.7981 |\n| AT | 32.31/0.8967 | 28.69/0.7839 | 27.64/0.7385 | 26.29/0.7927 |\n| FitNet | 31.99/0.8899 | 28.50/0.7789 | 27.55/0.7353 | 25.90/0.7791 |\n| FAKD | 32.46/0.8980 | 28.77/0.7860 | 27.68/0.7400 | 26.50/0.7980 |\n| MiPKD | 32.46/0.8982 | 28.77/0.7860 | 27.69/0.7402 | 26.55/0.7998 |\n\nWe compare MiPKD with the baselines: train from scratch, Logits-KD \\[ [12](https://ar5iv.org/html/2404.02573#bib.bib12 \"\")\\], RKD \\[ [28](https://ar5iv.org/html/2404.02573#bib.bib28 \"\")\\], AT \\[ [43](https://ar5iv.org/html/2404.02573#bib.bib43 \"\")\\], FitNet \\[ [32](https://ar5iv.org/html/2404.02573#bib.bib32 \"\")\\], FAKD \\[ [11](https://ar5iv.org/html/2404.02573#bib.bib11 \"\")\\], and CSD \\[ [40](https://ar5iv.org/html/2404.02573#bib.bib40 \"\")\\]. Since the CSD is a self-distillation method in the channel-spliting manner, it’s not applicable to the RCAN experiments of network depth distillation.\nThe results for ×4 EDSR trained with CSD are obtained by testing the provided checkpoint, and the ×2 and ×3 ones are reproduced by us since the checkpoints are unavailable.\nTo evaluate quality of SR model’s output, we calculate the peak signal-to-noise ratio (PSNR) and the structural similarity index (SSIM) on the Y channel of the YCbCr color space. We use 800 images from DIV2K \\[ [35](https://ar5iv.org/html/2404.02573#bib.bib35 \"\")\\] for training and evaluate SR models on four benchmark datasets: Set5 \\[ [2](https://ar5iv.org/html/2404.02573#bib.bib2 \"\")\\], Set14 \\[ [45](https://ar5iv.org/html/2404.02573#bib.bib45 \"\")\\], BSD100 \\[ [25](https://ar5iv.org/html/2404.02573#bib.bib25 \"\")\\], and Urban100 \\[ [14](https://ar5iv.org/html/2404.02573#bib.bib14 \"\")\\].\n\nTraining Details. All models are trained using Adam \\[ [17](https://ar5iv.org/html/2404.02573#bib.bib17 \"\")\\] optimizer with β1=0.9subscript𝛽10.9\\\\beta\\_{1}=0.9, β2=0.99subscript𝛽20.99\\\\beta\\_{2}=0.99 and ϵ=10−8italic-ϵsuperscript108\\\\epsilon=10^{-8}, with a batch size of 16 and a total of 2.5×1052.5superscript1052.5\\\\times 10^{5} updates. The initial learning rate is set to 10−4superscript10410^{-4} and is decayed by a factor of 10 at every 105superscript10510^{5} iteration. We set the loss weights λ1subscript𝜆1\\\\lambda\\_{1} and λ2subscript𝜆2\\\\lambda\\_{2} to 10 and 1, respectively. The proposed MiPKD is implemented by the BasicSR \\[ [39](https://ar5iv.org/html/2404.02573#bib.bib39 \"\")\\] and PyTorch \\[ [30](https://ar5iv.org/html/2404.02573#bib.bib30 \"\")\\] framework and train them using 4 NVIDIA V100 GPUs. The LR images used for training and evaluation were obtained by down-sampling the HR images with the bicubic degradation method. During training, the input images are randomly cropped into 48×48484848\\\\times 48 patches and augmented with random horizontal/vertical flips and rotations.\n\n### 4.2 Results and Comparison\n\nTable 4: Quantitative comparison of distilling SwinIR \\[ [20](https://ar5iv.org/html/2404.02573#bib.bib20 \"\")\\] on the benchmark datasets.\n\n| Scale | Method | Set5 | Set14 | BSD100 | Urban100 |\n| --- | --- | --- | --- | --- | --- |\n| PSNR | SSIM | PSNR | SSIM | PSNR | SSIM | PSNR | SSIM |\n| --- | --- | --- | --- | --- | --- | --- | --- |\n| 2 | Teacher | 38.36 | 0.9620 | 34.14 | 0.9227 | 32.45 | 0.9030 | 33.40 | 0.9394 |\n| Scratch | 38.00 | 0.9607 | 33.56 | 0.9178 | 32.19 | 0.9000 | 32.05 | 0.9279 |\n| KD | 38.04 | 0.9608 | 33.61 | 0.9184 | 32.22 | 0.9003 | 32.09 | 0.9282 |\n| MipKD | 38.14 | 0.9611 | 33.76 | 0.9194 | 32.29 | 0.9011 | 32.46 | 0.9313 |\n| 3 | Teacher | 34.89 | 0.9312 | 30.77 | 0.8503 | 29.37 | 0.8124 | 29.29 | 0.8744 |\n| Scratch | 34.41 | 0.9273 | 30.43 | 0.8437 | 29.12 | 0.8062 | 28.20 | 0.8537 |\n| KD | 34.44 | 0.9275 | 30.45 | 0.8443 | 29.14 | 0.8066 | 28.23 | 0.8545 |\n| MipKD | 34.53 | 0.9283 | 30.52 | 0.8456 | 29.19 | 0.8079 | 28.47 | 0.8591 |\n| 4 | Teacher | 32.72 | 0.9021 | 28.94 | 0.7914 | 27.83 | 0.7459 | 27.07 | 0.8164 |\n| Scratch | 32.31 | 0.8955 | 28.67 | 0.7833 | 27.61 | 0.7379 | 26.15 | 0.7884 |\n| KD | 32.27 | 0.8954 | 28.67 | 0.7833 | 27.62 | 0.7380 | 26.15 | 0.7887 |\n| MipKD | 32.39 | 0.8971 | 28.76 | 0.7854 | 27.68 | 0.7403 | 26.37 | 0.7956 |\n\nComparison with Baseline Methods.\nQuantitative results for training EDSR \\[ [21](https://ar5iv.org/html/2404.02573#bib.bib21 \"\")\\], RCAN \\[ [49](https://ar5iv.org/html/2404.02573#bib.bib49 \"\")\\], and SwinIR \\[ [20](https://ar5iv.org/html/2404.02573#bib.bib20 \"\")\\] of three SR scales\nare presented in [Tab.2](https://ar5iv.org/html/2404.02573#S4.T2 \"In 4.1 Experiment Setups ‣ 4 Experimental Results ‣ Knowledge Distillation with Multi-granularity Mixture of Priors for Image Super-Resolution\"), [Tab.3](https://ar5iv.org/html/2404.02573#S4.T3 \"In 4.1 Experiment Setups ‣ 4 Experimental Results ‣ Knowledge Distillation with Multi-granularity Mixture of Priors for Image Super-Resolution\") and [Tab.4](https://ar5iv.org/html/2404.02573#S4.T4 \"In 4.2 Results and Comparison ‣ 4 Experimental Results ‣ Knowledge Distillation with Multi-granularity Mixture of Priors for Image Super-Resolution\"), from which we can draw the following conclusions:\n\n(1) Existing KD methods for SR have limited effects, some may even deteriorate the student model. The KD methods originally designed for high-level CV tasks (RKD, AT, FitNet), though applicable, hardly improve the SR models over training from scratch. For instance, AT and FitNet underperform the vanilla student models trained without KD among all settings.\n\n(2) The presented MiPKD outperforms existing KD methods baseline in width and depth compression, respectively.\nFor example, MiPKD outperforms the vanilla student in the most challenging dataset Urban100 in EDSR×\\\\times2, ×\\\\times3, and ×\\\\times4 settings by\n0.56 dB, 0.42 dB, 0.24 dB\nin terms of PSNR, respectively as [Tab.2](https://ar5iv.org/html/2404.02573#S4.T2 \"In 4.1 Experiment Setups ‣ 4 Experimental Results ‣ Knowledge Distillation with Multi-granularity Mixture of Priors for Image Super-Resolution\") shown. For depth distillation, compared with trainning from scratch,\n0.2 dB, 0.17 dB, 0.19 dB\nin terms of PSNR are improved, respectively, on Urban100 dataset in RCAN ×\\\\times2, ×\\\\times3, and ×\\\\times4 settings as [Tab.3](https://ar5iv.org/html/2404.02573#S4.T3 \"In 4.1 Experiment Setups ‣ 4 Experimental Results ‣ Knowledge Distillation with Multi-granularity Mixture of Priors for Image Super-Resolution\") shown.\n\n(3) The MiPKD is applicable to Transformer network and able to boost the model’s performance. Conventional feature-based KD methods are not directly applicable to the Transformer-type networks, so we compare MiPKD with training from scratch and the response-based KD \\[ [12](https://ar5iv.org/html/2404.02573#bib.bib12 \"\")\\] in the experiments. The results in  [Tab.4](https://ar5iv.org/html/2404.02573#S4.T4 \"In 4.2 Results and Comparison ‣ 4 Experimental Results ‣ Knowledge Distillation with Multi-granularity Mixture of Priors for Image Super-Resolution\") indicate that the MiPKD could improve the transformer SR model by a large margin, further emphasizing its superior performance.\n\nTable 5: Quantitative comparison on training ×4 EDSR \\[ [21](https://ar5iv.org/html/2404.02573#bib.bib21 \"\")\\] models with higher compression rate on the benchmark datasets.In these experiments, the EDSR student model of c64b16 is distilled by the teacher model of c256b32.\n\n| Method | Set5 | Set14 | BSD100 | Urban100 |\n| --- | --- | --- | --- | --- |\n| PSNR/SSIM | PSNR/SSIM | PSNR/SSIM | PSNR/SSIM |\n| --- | --- | --- | --- |\n| Teacher | 32.65/0.9005 | 28.95/0.7903 | 27.81/0.7440 | 26.87/0.8086 |\n| NOKD | 32.01/0.8924 | 28.46/0.7782 | 27.47/0.7324 | 25.61/0.7704 |\n| KD | 31.99/0.8921 | 28.46/0.7784 | 27.47/0.7327 | 25.60/0.7700 |\n| FitNet | 31.92/0.8912 | 28.42/0.7776 | 27.44/0.7317 | 25.52/0.7672 |\n| FAKD | 31.65/0.8879 | 28.32/0.7760 | 27.37/0.7303 | 25.38/0.7629 |\n| FAKD+CSD | 32.00/0.8930 | 28.47/0.7800 | 27.51/0.7340 | 25.79/0.7790 |\n| CSD+FAKD | 31.86/0.8907 | 28.42/0.7786 | 27.46/0.7327 | 25.58/0.7709 |\n| MiPKD+MiPKD | 32.17/0.8947 | 28.57/0.7812 | 27.57/0.7354 | 25.89/0.7794 |\n\nEvaluate MiPKD on high compression rate setting. [Tab.5](https://ar5iv.org/html/2404.02573#S4.T5 \"In 4.2 Results and Comparison ‣ 4 Experimental Results ‣ Knowledge Distillation with Multi-granularity Mixture of Priors for Image Super-Resolution\") shows the results of training ×4 scale EDSR model compressed in both network width and depth dimensions. The number of parameters are compressed for about 28 times from teacher model.\nDirectly distilling the student model by the teacher model yields negative effects on its performance. Two-stage KD with an intermediate teaching-assistant (TA) model \\[ [26](https://ar5iv.org/html/2404.02573#bib.bib26 \"\")\\] are necessary in such case.\nTo make use of the CSD method, we compared different TA options, (1) Teacher->Student1->Student2: the whole pipeline is in a width-then-depth compression order. We adopt CSD to train the TA and FAKD for student. model (2) Depth-then-width: we first perform depth compression and then width compression. We adopt FAKD+CSD and MiPKD+MiPKD for the two-stage distillations. Using MiPKD to train both TA and student model yields the best results.\n\nVisual Comparison. [Fig.3](https://ar5iv.org/html/2404.02573#S4.F3 \"In 4.2 Results and Comparison ‣ 4 Experimental Results ‣ Knowledge Distillation with Multi-granularity Mixture of Priors for Image Super-Resolution\") compares the output of ×4 RCAN models differently trained for four images from the Urban100 dataset. For instance, for i​m​g​\\_​047𝑖𝑚𝑔\\_047img\\\\\\_047, MiPKD can reconstruct much better fine details than all baseline work. FAKD are prone to artifacts in the left-bottom of the building and the vanilla student, Logits-KD, FAKD, and FitNet are over-blurred. In contrast, MiPKD alleviates the blurring artifacts and reconstructs much more structural details. Similar observations can be found in other cases, e.g. the characters and anisotropic textures in i​m​g​\\_​073𝑖𝑚𝑔\\_073img\\\\\\_073. These visual comparisons are consistent with the quantitative results, demonstrating the superiority of MiPKD. More visual comparisons can be found in the supplementary materials.\n\n![Refer to caption](https://ar5iv.org/html/2404.02573/assets/fig/mipkd_vis_final.png)Figure 3: Visual comparison (×\\\\times4) with existing SRKD methods from Urban100. the numbers in the bracket denote the PSNR of the presented patches.\n\n## 5 Ablation Study\n\nTo demonstrate the effectiveness of the proposed MiPKD scheme, we conduct detailed ablation studies on ×multiple scale RCAN and EDSR networks.\n\nAblation on the feature and block prior mixers for MipKD.\nThere are two fine-grained prior mixer modules in MiPKD, namely, the feature and block prior mixers. Their individual effects are ablated in [Tab.6](https://ar5iv.org/html/2404.02573#S5.T6 \"In 5 Ablation Study ‣ Knowledge Distillation with Multi-granularity Mixture of Priors for Image Super-Resolution\"). The result shows that employing the feature prior mixers leads to significant performance improvement and the block prior mixer based on it could further boost the student model.\n\nTable 6: Ablation on the two modules of MiPKD. In these experiments, the RCAN student model of c32b5g5 is distilled by the teacher model of c32b6g10. Applying both of the mixers together shows the best student model performance.\n\n| Feature Prior Mixer | Block Prior Mixer | Urban100 |\n| --- | --- | --- |\n| PSNR / SSIM |\n| --- |\n| ✗ | ✗ | 25.60 / 0.7700 |\n| ✓ | ✗ | 25.63 / 0.7711 |\n| ✗ | ✓ | 25.65 / 0.7717 |\n| ✓ | ✓ | 25.69 / 0.7728 |\n\nTable 7: Ablation on the encoder type in MiPKD feature mixer module without block prior mixer module.\n\n| Encoder Type | Urban100 |\n| --- | --- |\n| PSNR | SSIM |\n| --- | --- |\n| No Encoder | 24.51 | 0.7149 |\n| Shared Encoder | 25.61 | 0.7704 |\n| Separate Encoder | 25.63 | 0.7711 |\n\nAblation on the MiPKD feature prior mixer module.\nIn the feature prior mixer module of MiPKD, the teacher and student models’ feature maps are mapped to the latent space through corresponding encoders, thereby randomly mixed and stitched.\nWe present an analysis of the impact of the encoders in [Tab.7](https://ar5iv.org/html/2404.02573#S5.T7 \"In 5 Ablation Study ‣ Knowledge Distillation with Multi-granularity Mixture of Priors for Image Super-Resolution\") by comparing MiPKD with 1) removing the encoders, aligning and utilizing the teacher’s feature map directly and 2) sharing a encoder among the teacher and student model.\nRemoving the encoders would substantially deteriorate the student model’s performance. Due to the different distribution of teacher and student models’ feature maps, a shared encoder cannot effectively map them to the same latent space, leading to noisy mixtures.\nAssigning the teacher and student models separate encoders yields the best results, indicating that mixing feature priors in the same latent space is necessary.\n\n[Tab.8](https://ar5iv.org/html/2404.02573#S5.T8 \"In 5 Ablation Study ‣ Knowledge Distillation with Multi-granularity Mixture of Priors for Image Super-Resolution\") compares the encoders and decoder of different architecture. The result shows that convolutional neural network type exhibits better performance and is more suitable in SR task.\n\nBesides, the strategies of the mask generation are compared in [Tab.9](https://ar5iv.org/html/2404.02573#S5.T9 \"In 5 Ablation Study ‣ Knowledge Distillation with Multi-granularity Mixture of Priors for Image Super-Resolution\"). Compared with 1) masking according to the Cosine or CKA similarity between teacher and student models’ feature maps or 2) generating the complementary pairs of feature map by fixed grid pattern, the random 3D-mask exhibits the best performance and least calculation consumption. A more flexible, generalisable strategy is applied in the prior mixer module.\n\nTable 8: Ablation analysis on the encoder/decoder network architecture settings. The RCAN student model of c64b5g10 is distilled by the teacher model of c64b20g10.\n\n| Encoder Type | Set5 | Set14 | BSD100 | Urban100 |\n| --- | --- | --- | --- | --- |\n| PSNR/SSIM | PSNR/SSIM | PSNR/SSIM | PSNR/SSIM |\n| --- | --- | --- | --- |\n| MLP | 32.39/0.8976 | 28.72/0.7853 | 27.65/0.7391 | 26.42/0.7964 |\n| Conv | 32.46/0.8982 | 28.77/0.7860 | 27.69/0.7402 | 26.55/0.7998 |\n\nTable 9: Ablation analysis on the masking strategy for feature prior mixture.\n\n| masking strategy | Urban100 |\n| PSNR/SSIM |\n| Cosine | 25.62/0.7711 |\n| Grid mask | 25.61/0.7669 |\n| CKA | 25.63/0.7713 |\n| Random | 25.69/0.7728 |\n\nAblation on the “auto-encoder” loss Lka​esuperscriptsubscript𝐿𝑘𝑎𝑒L\\_{k}^{ae}.  We compared the MiPKD with and without Lka​esuperscriptsubscript𝐿𝑘𝑎𝑒L\\_{k}^{ae} in [Tab.10](https://ar5iv.org/html/2404.02573#S5.T10 \"In 5 Ablation Study ‣ Knowledge Distillation with Multi-granularity Mixture of Priors for Image Super-Resolution\"). The results indicate that the auxiliary “auto-encoder” loss makes the mapping between original feature maps’ space and the latent space more accurate, leading to better student model’s performance.\n\nTable 10: Ablation study on the auto-encoder loss.\n\n| Auto-encoder Loss | Set5 | Set14 | BSD100 | Urban100 |\n| --- | --- | --- | --- | --- |\n| PSNR/SSIM | PSNR/SSIM | PSNR/SSIM | PSNR/SSIM |\n| --- | --- | --- | --- |\n| ✗ | 32.4/0.8976 | 28.71/0.7851 | 27.66/0.7396 | 26.42/0.7971 |\n| ✓ | 32.46/0.8982 | 28.77/0.7860 | 27.69/0.7402 | 26.55/0.7998 |\n\nAblation on the Loss weights setting of feature and block mixers.\nThe impact of various weights of feature mixers loss and block mixer loss is evaluated as Tab. [11](https://ar5iv.org/html/2404.02573#S5.T11 \"Table 11 ‣ 5 Ablation Study ‣ Knowledge Distillation with Multi-granularity Mixture of Priors for Image Super-Resolution\") shown, where λr​e​csubscript𝜆𝑟𝑒𝑐\\\\lambda\\_{rec}, λk​dsubscript𝜆𝑘𝑑\\\\lambda\\_{kd}, λf​e​a​tsubscript𝜆𝑓𝑒𝑎𝑡\\\\lambda\\_{feat}, λb​l​o​c​ksubscript𝜆𝑏𝑙𝑜𝑐𝑘\\\\lambda\\_{block} represent the weights for reconstruction loss, logits-kd loss, feature prior mixer and block prior mixer respectively.\nConsidering the initial fluctuation caused by mixing the block from networks, λb​l​o​c​ksubscript𝜆𝑏𝑙𝑜𝑐𝑘\\\\lambda\\_{block} is applied as 0.1 presents the best student performance as the Tab. [10](https://ar5iv.org/html/2404.02573#S5.T10 \"Table 10 ‣ 5 Ablation Study ‣ Knowledge Distillation with Multi-granularity Mixture of Priors for Image Super-Resolution\") shown.\nIn addition, the reconstruction loss of auto-encoder in the feature prior mixer is introduced in the initial stage of training.\nAs the reconstruction ability of decoder improves, it’s beneficial for the prior mixer to fuse dark knowledge and restore the enhanced feature map efficiently.\n\nTable 11: Ablation analysis on the weights of different losses\n\n| λr​e​csubscript𝜆𝑟𝑒𝑐\\\\lambda\\_{rec} | λk​dsubscript𝜆𝑘𝑑\\\\lambda\\_{kd} | λf​e​a​tsubscript𝜆𝑓𝑒𝑎𝑡\\\\lambda\\_{feat} | λb​l​o​c​ksubscript𝜆𝑏𝑙𝑜𝑐𝑘\\\\lambda\\_{block} | Set5 | Set14 | BSD100 | Urban100 |\n| --- | --- | --- | --- | --- | --- | --- | --- |\n| PSNR/SSIM | PSNR/SSIM | PSNR/SSIM | PSNR/SSIM |\n| --- | --- | --- | --- |\n| 1 | 1 | 1 | 1 | 32.44/0.8972 | 28.75/0.7851 | 27.68/0.7399 | 26.51/0.7976 |\n| 1 | 1 | 0.1 | 1 | 32.34/0.8970 | 28.73/0.7849 | 27.67/0.7394 | 26.47/0.7960 |\n| 1 | 1 | 0.1 | 0.1 | 32.42/0.8980 | 28.75/0.7857 | 27.68/0.7399 | 26.51/0.7988 |\n| 1 | 1 | 1 | 0.1 | 32.46/0.8982 | 28.77/0.7860 | 27.69/0.7402 | 26.55/0.7998 |\n\n## 6 Conclusion\n\nIn this paper, we present MiPKD, a simple yet significant KD framework for SR with feature and block mixers.\nBy incorporating the prior knowledge from teacher model to the student, the capacity disparity between them are reduced, and the feature alignment is achieved effectively.\nWe compare the proposed MiPKD with various kinds of distillation methods and demonstrate the superiority of our solutions.\nFor instance, it improves the EDSR network of three SR scale on Urban100 testing set in the range of 0.24 dB∼similar-to\\\\sim0.56 dB in terms of PSNR.\nThe presented MiPKD outperforms existing KD methods baseline in width, depth compression and compounded compression in SR tasks, which is flexible to a wide array of teacher-student kd architectures.\n\n## References\n\n- \\[1\\]\nAhn, N., Kang, B., Sohn, K.A.: Fast, accurate, and lightweight super-resolution with cascading residual network. In: ECCV. pp. 252–268 (2018)\n\n- \\[2\\]\nBevilacqua, M., Roumy, A., Guillemot, C., Alberi-Morel, M.L.: Low-complexity single-image super-resolution based on nonnegative neighbor embedding. BMVC (2012)\n\n- \\[3\\]\nChen, H., Wang, Y., Guo, T., Xu, C., Deng, Y., Liu, Z., Ma, S., Xu, C., Xu, C., Gao, W.: Pre-trained image processing transformer. In: CVPR. pp. 12299–12310 (2021)\n\n- \\[4\\]\nChu, X., Zhang, B., Ma, H., Xu, R., Li, Q.: Fast, accurate and lightweight super-resolution with neural architecture search. In: ICPR. pp. 59–64. IEEE (2021)\n\n- \\[5\\]\nDai, T., Cai, J., Zhang, Y., Xia, S.T., Zhang, L.: Second-order attention network for single image super-resolution. In: CVPR. pp. 11065–11074 (2019)\n\n- \\[6\\]\nDong, C., Loy, C.C., He, K., Tang, X.: Learning a deep convolutional network for image super-resolution. In: ECCV. pp. 184–199. Springer (2014)\n\n- \\[7\\]\nDong, C., Loy, C.C., He, K., Tang, X.: Image super-resolution using deep convolutional networks. TPAMI 38(2), 295–307 (2015)\n\n- \\[8\\]\nDong, C., Loy, C.C., Tang, X.: Accelerating the super-resolution convolutional neural network. In: ECCV. pp. 391–407. Springer (2016)\n\n- \\[9\\]\nGou, J., Yu, B., Maybank, S.J., Tao, D.: Knowledge distillation: A survey. IJCV 129, 1789–1819 (2021)\n\n- \\[10\\]\nHe, K., Zhang, X., Ren, S., Sun, J.: Deep residual learning for image recognition. In: CVPR. pp. 770–778 (2016)\n\n- \\[11\\]\nHe, Z., Dai, T., Lu, J., Jiang, Y., Xia, S.T.: Fakd: Feature-affinity based knowledge distillation for efficient image super-resolution. In: ICIP. pp. 518–522. IEEE (2020)\n\n- \\[12\\]\nHinton, G., Vinyals, O., Dean, J., et al.: Distilling the knowledge in a neural network. arXiv preprint arXiv:1503.02531 2(7) (2015)\n\n- \\[13\\]\nHong, C., Baik, S., Kim, H., Nah, S., Lee, K.M.: Cadyq: Content-aware dynamic quantization for image super-resolution. In: ECCV (2022)\n\n- \\[14\\]\nHuang, J.B., Singh, A., Ahuja, N.: Single image super-resolution from transformed self-exemplars. In: CVPR. pp. 5197–5206 (2015)\n\n- \\[15\\]\nHui, Z., Gao, X., Yang, Y., Wang, X.: Lightweight image super-resolution with information multi-distillation network. In: ACMMM. pp. 2024–2032 (2019)\n\n- \\[16\\]\nKim, J., Lee, J.K., Lee, K.M.: Accurate image super-resolution using very deep convolutional networks. In: CVPR. pp. 1646–1654 (2016)\n\n- \\[17\\]\nKingma, D.P., Ba, J.: Adam: A method for stochastic optimization. arXiv:1412.6980 (2014)\n\n- \\[18\\]\nLee, W., Lee, J., Kim, D., Ham, B.: Learning with privileged information for efficient image super-resolution. In: ECCV. pp. 465–482. Springer (2020)\n\n- \\[19\\]\nLi, H., Yan, C., Lin, S., Zheng, X., Zhang, B., Yang, F., Ji, R.: Pams: Quantized super-resolution via parameterized max scale. In: ECCV. pp. 564–580 (2020)\n\n- \\[20\\]\nLiang, J., Cao, J., Sun, G., Zhang, K., Van Gool, L., Timofte, R.: Swinir: Image restoration using swin transformer. In: ICCV. pp. 1833–1844 (2021)\n\n- \\[21\\]\nLim, B., Son, S., Kim, H., Nah, S., Mu Lee, K.: Enhanced deep residual networks for single image super-resolution. In: CVPRW. pp. 136–144 (2017)\n\n- \\[22\\]\nLiu, D., Kan, M., Shan, S., Chen, X.: Function-consistent feature distillation. arXiv preprint arXiv:2304.11832 (2023)\n\n- \\[23\\]\nLuo, X., Liang, Q., Liu, D., Qu, Y.: Boosting lightweight single image super-resolution via joint-distillation. In: ACMMM. pp. 1535–1543 (2021)\n\n- \\[24\\]\nMa, Y., Xiong, H., Hu, Z., Ma, L.: Efficient super resolution using binarized neural network. In: CVPR Workshops. pp. 0–0 (2019)\n\n- \\[25\\]\nMartin, D., Fowlkes, C., Tal, D., Malik, J.: A database of human segmented natural images and its application to evaluating segmentation algorithms and measuring ecological statistics. In: ICCV. vol. 2, pp. 416–423. IEEE (2001)\n\n- \\[26\\]\nMirzadeh, S.I., Farajtabar, M., Li, A., Levine, N., Matsukawa, A., Ghasemzadeh, H.: Improved knowledge distillation via teacher assistant. In: AAAI. vol. 34, pp. 5191–5198 (2020)\n\n- \\[27\\]\nNie, Y., Han, K., Liu, Z., Xiao, A., Deng, Y., Xu, C., Wang, Y.: Ghostsr: Learning ghost features for efficient image super-resolution. arXiv preprint arXiv:2101.08525 (2021)\n\n- \\[28\\]\nPark, W., Kim, D., Lu, Y., Cho, M.: Relational knowledge distillation. In: CVPR. pp. 3967–3976 (2019)\n\n- \\[29\\]\nPasqualetti, F., Zampieri, S.: On the controllability of isotropic and anisotropic networks. In: 53rd IEEE Conference on Decision and Control. pp. 607–612. IEEE (2014)\n\n- \\[30\\]\nPaszke, A., Gross, S., Massa, F., Lerer, A., Bradbury, J., Chanan, G., Killeen, T., Lin, Z., Gimelshein, N., Antiga, L., et al.: Pytorch: An imperative style, high-performance deep learning library. NeurIPS 32 (2019)\n\n- \\[31\\]\nRen, P., Xiao, Y., Chang, X., Huang, P.Y., Li, Z., Chen, X., Wang, X.: A comprehensive survey of neural architecture search: Challenges and solutions. ACM Computing Surveys (CSUR) 54(4), 1–34 (2021)\n\n- \\[32\\]\nRomero, A., Ballas, N., Kahou, S.E., Chassang, A., Gatta, C., Bengio, Y.: Fitnets: Hints for thin deep nets. CoRR abs/1412.6550 (2014)\n\n- \\[33\\]\nSong, D., Wang, Y., Chen, H., Xu, C., Xu, C., Tao, D.: Addersr: Towards energy efficient image super-resolution. In: CVPR. pp. 15648–15657 (2021)\n\n- \\[34\\]\nSong, D., Xu, C., Jia, X., Chen, Y., Xu, C., Wang, Y.: Efficient residual dense block search for image super-resolution. In: AAAI. vol. 34, pp. 12007–12014 (2020)\n\n- \\[35\\]\nTimofte, R., Agustsson, E., Van Gool, L., Yang, M.H., Zhang, L.: Ntire 2017 challenge on single image super-resolution: Methods and results. In: CVPRW. pp. 114–125 (2017)\n\n- \\[36\\]\nWan, A., Dai, X., Zhang, P., He, Z., Tian, Y., Xie, S., Wu, B., Yu, M., Xu, T., Chen, K., et al.: Fbnetv2: Differentiable neural architecture search for spatial and channel dimensions. In: CVPR. pp. 12965–12974 (2020)\n\n- \\[37\\]\nWang, L., Li, D., Tian, L., Shan, Y.: Efficient image super-resolution with collapsible linear blocks. In: CVPR. pp. 817–823 (2022)\n\n- \\[38\\]\nWang, L., Dong, X., Wang, Y., Ying, X., Lin, Z., An, W., Guo, Y.: Exploring sparsity in image super-resolution for efficient inference. In: CVPR. pp. 4917–4926 (2021)\n\n- \\[39\\]\nWang, X., Xie, L., Yu, K., Chan, K.C., Loy, C.C., Dong, C.: BasicSR: Open source image and video restoration toolbox. [https://github.com/XPixelGroup/BasicSR](https://github.com/XPixelGroup/BasicSR \"\") (2022)\n\n- \\[40\\]\nWang, Y., Lin, S., Qu, Y., Wu, H., Zhang, Z., Xie, Y., Yao, A.: Towards compact single image super-resolution via contrastive self-distillation. In: IJCAI (2021)\n\n- \\[41\\]\nWang, Z., Cun, X., Bao, J., Zhou, W., Liu, J., Li, H.: Uformer: A general u-shaped transformer for image restoration. In: CVPR. pp. 17683–17693 (2022)\n\n- \\[42\\]\nYim, J., Joo, D., Bae, J., Kim, J.: A gift from knowledge distillation: Fast optimization, network minimization and transfer learning. In: CVPR. pp. 4133–4141 (2017)\n\n- \\[43\\]\nZagoruyko, S., Komodakis, N.: Paying more attention to attention: Improving the performance of convolutional neural networks via attention transfer. arXiv preprint arXiv:1612.03928 (2016)\n\n- \\[44\\]\nZamir, S.W., Arora, A., Khan, S., Hayat, M., Khan, F.S., Yang, M.H.: Restormer: Efficient transformer for high-resolution image restoration. In: CVPR. pp. 5728–5739 (2022)\n\n- \\[45\\]\nZeyde, R., Elad, M., Protter, M.: On single image scale-up using sparse-representations. In: Curves and Surfaces: 7th International Conference, Avignon, France, June 24-30, 2010, Revised Selected Papers 7. pp. 711–730. Springer (2012)\n\n- \\[46\\]\nZhang, Q., Liu, X., Li, W., Chen, H., Liu, J., Hu, J., Xiong, Z., Yuan, C., Wang, Y.: Distilling semantic priors from sam to efficient image restoration models. arXiv:2403.16368 (2024)\n\n- \\[47\\]\nZhang, X., Zeng, H., Guo, S., Zhang, L.: Efficient long-range attention network for image super-resolution. In: ECCV. pp. 649–667. Springer (2022)\n\n- \\[48\\]\nZhang, Y., Chen, H., Chen, X., Deng, Y., Xu, C., Wang, Y.: Data-free knowledge distillation for image super-resolution. In: CVPR. pp. 7852–7861 (2021)\n\n- \\[49\\]\nZhang, Y., Li, K., Li, K., Wang, L., Zhong, B., Fu, Y.: Image super-resolution using very deep residual channel attention networks. In: ECCV. pp. 286–301 (2018)\n\n- \\[50\\]\nZhang, Y., Li, K., Li, K., Zhong, B., Fu, Y.: Residual non-local attention networks for image restoration. arXiv preprint arXiv:1903.10082 (2019)\n\n- \\[51\\]\nZhang, Y., Wang, H., Qin, C., Fu, Y.: Aligned structured sparsity learning for efficient image super-resolution. NeurIPS 34, 2695–2706 (2021)\n\n- \\[52\\]\nZhang, Y., Li, W., Li, S., Hu, J., Chen, H., Wang, H., Tu, Z., Wang, W., Jing, B., Wang, Y.: Data upcycling knowledge distillation for image super-resolution. arXiv:2309.14162 (2023)\n\n- \\[53\\]\nZoph, B., Le, Q.V.: Neural architecture search with reinforcement learning. arXiv preprint arXiv:1611.01578 (2016)\n\n\n[◄](https://ar5iv.org/html/2404.02572) [![ar5iv homepage](https://ar5iv.org/assets/ar5iv.png)](https://ar5iv.org/) [Feeling\\\\\n\\\\\nlucky?](https://ar5iv.org/feeling_lucky) [Conversion\\\\\n\\\\\nreport](https://ar5iv.org/log/2404.02573) [Report\\\\\n\\\\\nan issue](https://github.com/dginev/ar5iv/issues/new?template=improve-article--arxiv-id-.md&title=Improve+article+2404.02573) [View original\\\\\n\\\\\non arXiv](https://arxiv.org/abs/2404.02573) [►](https://ar5iv.org/html/2404.02574)",
+  "sections": {
+    "1 Introduction": {
+      "content": "Super-resolution (SR) is a fundamental yet challenging task in the field of computer vision (CV), to restore high-resolution (HR) images from their low-resolution (LR) counterparts \\[ [7], [20], [3]\\]. In the past decade, convolutional neural network (CNN) \\[ [6], [16], [21], [49], [5]\\] and Transformer \\[ [3], [20], [41], [44], [46]\\] have demonstrated exceptional success for SR.\nHowever, it is impractical to directly deploy these models on resource-limited devices due to their heavy computation overload \\[ [51]\\].\nConsequently, there has been a growing interest in model compression for SR models to facilitate their real-world applications.\n\n![Refer to caption]Figure 1: The PSNR of student models on Urban100 testset under different compression settings. In the depth compression (a), there are barely KD methods outperforming vanilla logits-KD. For width compression (b), CSD performs well but only satisfies this setting. For compounded compression, almost all KD underperforms training without KD.\n\nKnowledge distillation, emerging as an effective model compression method, can significantly reduce the computation overload, facilitating the student by transferring dark knowledge from the well-performed but cumbersome teacher model to the compact one \\[ [48], [23], [15], [18]\\]. Compared with other model compression techniques, such as quantization \\[ [19], [13], [24]\\], pruning \\[ [38], [40]\\], compact block design \\[ [1], [33], [27], [37]\\], and neural architecture search (NAS) \\[ [53], [36], [31]\\], KD is a widely recognized method that can be combined with aforementioned techniques to further improve the compactness of student model.\nKD for SR has also attracted wide attention recently and gained remarkable progress \\[ [19], [18], [48], [11], [40], [52]\\]. These methods can be roughly categorized into response-based KD and feature-based KD, the former utilizes the output of the teacher model to supervise the training process of the student model, while the latter tries to align the\nhidden representations between the teacher model and the student model \\[ [9], [40], [11]\\].\n\nThough previous KD methods show promising results in SR, several issues hinder the wide applications of them. First, existing KD techniques for SR are tailored to specific teacher-student architectures. They support either network depth ( [Fig.1]In 1 Introduction ‣ Knowledge Distillation with Multi-granularity Mixture of Priors for Image Super-Resolution\") (a)) or network width ( [Fig.1]In 1 Introduction ‣ Knowledge Distillation with Multi-granularity Mixture of Priors for Image Super-Resolution\") (b)) compression \\[ [11]\\], and deteriorates the student dramatically when adopting them into another setting. For instance, FAKD \\[ [11]\\] boosts the student model in depth compression but deteriorates the student when applied to a width compression circumstance. CSD \\[ [40]\\] improves the student model significantly (Fig. [1]Figure 1 ‣ 1 Introduction ‣ Knowledge Distillation with Multi-granularity Mixture of Priors for Image Super-Resolution\") (b)) but is not compatible with depth compression in Fig. [1]Figure 1 ‣ 1 Introduction ‣ Knowledge Distillation with Multi-granularity Mixture of Priors for Image Super-Resolution\") (a).\nIt’s necessary to propose a more flexible KD framework which is closer to real-world application.\nWhile few methods have discussed the compounded compression on both depth and width dimension, which is a much more general but challenging scenario.\nTo be specific, FAKD and those feature-based KD methods introduced from high-level CV, e.g. RKD \\[ [28]\\], AT \\[ [43]\\], and FitNet \\[ [32]\\] hardly benefit the student model.\n[Fig.1]In 1 Introduction ‣ Knowledge Distillation with Multi-granularity Mixture of Priors for Image Super-Resolution\") (a) shows that the previous depth and channel distillation methods can just obtain a marginal performance gain or even deteriorate the student in most cases.\nTo alleivate these issues, in this paper, we present a novel knowledge distillation framework for SR models, the multi-granularity mixture of prior knowledge distillation (MiPKD), that is universally applicable to a wide array of teacher-student architectures at feature and block levels.\nSpecifically, the feature prior mixer first dynamically combines priors from the teacher and the student and then is\nsupervised by the teacher’s feature map. The block prior mixer adopts a coarser-grained prior mixture at the network block level that dynamically switches the normal forward propagation path to the teacher or the student. The final output of this newly ensembled sub-network is further supervised by the teacher’s response.\n\nIn summary, the main contributions of this paper are as follows:\n\n- ∙∙\\\\bullet\n\n\nWe present MiPKD, a KD framework for efficient SR, transferring the teacher model’s prior knowledge from both network width and depth levels. It’s more flexible and applicable to a wide array of teacher-student architectures.\n\n- ∙∙\\\\bullet\n\n\nWe propose the feature and block prior mixers to reduce the capacity disparity between teacher and student models for better alignment. The former combines the feature maps in a unified latent space, while the latter assembles dynamic combination of network blocks from teacher and student models.\n\n- ∙∙\\\\bullet\n\n\nExtensive experiments on various benchmarks show that the proposed MiPKD framework significantly outperforms the previous arts.",
+      "citations": [
+        {
+          "start_pos": 184,
+          "end_pos": 187,
+          "text": "[7]",
+          "paper_id": "bib.bib7",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 189,
+          "end_pos": 193,
+          "text": "[20]",
+          "paper_id": "bib.bib20",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 195,
+          "end_pos": 198,
+          "text": "[3]",
+          "paper_id": "bib.bib3",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 260,
+          "end_pos": 263,
+          "text": "[6]",
+          "paper_id": "bib.bib6",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 265,
+          "end_pos": 269,
+          "text": "[16]",
+          "paper_id": "bib.bib16",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 271,
+          "end_pos": 275,
+          "text": "[21]",
+          "paper_id": "bib.bib21",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 277,
+          "end_pos": 281,
+          "text": "[49]",
+          "paper_id": "bib.bib49",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 283,
+          "end_pos": 286,
+          "text": "[5]",
+          "paper_id": "bib.bib5",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 308,
+          "end_pos": 311,
+          "text": "[3]",
+          "paper_id": "bib.bib3",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 313,
+          "end_pos": 317,
+          "text": "[20]",
+          "paper_id": "bib.bib20",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 319,
+          "end_pos": 323,
+          "text": "[41]",
+          "paper_id": "bib.bib41",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 325,
+          "end_pos": 329,
+          "text": "[44]",
+          "paper_id": "bib.bib44",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 331,
+          "end_pos": 335,
+          "text": "[46]",
+          "paper_id": "bib.bib46",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 514,
+          "end_pos": 518,
+          "text": "[51]",
+          "paper_id": "bib.bib51",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1269,
+          "end_pos": 1273,
+          "text": "[48]",
+          "paper_id": "bib.bib48",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1275,
+          "end_pos": 1279,
+          "text": "[23]",
+          "paper_id": "bib.bib23",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1281,
+          "end_pos": 1285,
+          "text": "[15]",
+          "paper_id": "bib.bib15",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1287,
+          "end_pos": 1291,
+          "text": "[18]",
+          "paper_id": "bib.bib18",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1369,
+          "end_pos": 1373,
+          "text": "[19]",
+          "paper_id": "bib.bib19",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1375,
+          "end_pos": 1379,
+          "text": "[13]",
+          "paper_id": "bib.bib13",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1381,
+          "end_pos": 1385,
+          "text": "[24]",
+          "paper_id": "bib.bib24",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1400,
+          "end_pos": 1404,
+          "text": "[38]",
+          "paper_id": "bib.bib38",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1406,
+          "end_pos": 1410,
+          "text": "[40]",
+          "paper_id": "bib.bib40",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1438,
+          "end_pos": 1441,
+          "text": "[1]",
+          "paper_id": "bib.bib1",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1443,
+          "end_pos": 1447,
+          "text": "[33]",
+          "paper_id": "bib.bib33",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1449,
+          "end_pos": 1453,
+          "text": "[27]",
+          "paper_id": "bib.bib27",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1455,
+          "end_pos": 1459,
+          "text": "[37]",
+          "paper_id": "bib.bib37",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1503,
+          "end_pos": 1507,
+          "text": "[53]",
+          "paper_id": "bib.bib53",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1509,
+          "end_pos": 1513,
+          "text": "[36]",
+          "paper_id": "bib.bib36",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1515,
+          "end_pos": 1519,
+          "text": "[31]",
+          "paper_id": "bib.bib31",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1748,
+          "end_pos": 1752,
+          "text": "[19]",
+          "paper_id": "bib.bib19",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1754,
+          "end_pos": 1758,
+          "text": "[18]",
+          "paper_id": "bib.bib18",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1760,
+          "end_pos": 1764,
+          "text": "[48]",
+          "paper_id": "bib.bib48",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1766,
+          "end_pos": 1770,
+          "text": "[11]",
+          "paper_id": "bib.bib11",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1772,
+          "end_pos": 1776,
+          "text": "[40]",
+          "paper_id": "bib.bib40",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1778,
+          "end_pos": 1782,
+          "text": "[52]",
+          "paper_id": "bib.bib52",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 2090,
+          "end_pos": 2093,
+          "text": "[9]",
+          "paper_id": "bib.bib9",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 2095,
+          "end_pos": 2099,
+          "text": "[40]",
+          "paper_id": "bib.bib40",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 2101,
+          "end_pos": 2105,
+          "text": "[11]",
+          "paper_id": "bib.bib11",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 2633,
+          "end_pos": 2637,
+          "text": "[11]",
+          "paper_id": "bib.bib11",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 2746,
+          "end_pos": 2750,
+          "text": "[11]",
+          "paper_id": "bib.bib11",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 2885,
+          "end_pos": 2889,
+          "text": "[40]",
+          "paper_id": "bib.bib40",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 3597,
+          "end_pos": 3601,
+          "text": "[28]",
+          "paper_id": "bib.bib28",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 3611,
+          "end_pos": 3615,
+          "text": "[43]",
+          "paper_id": "bib.bib43",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 3633,
+          "end_pos": 3637,
+          "text": "[32]",
+          "paper_id": "bib.bib32",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        }
+      ]
+    },
+    "2 Related Work": {
+      "content": "Deep SISR Models. Deep neural networks (DNNs) based image super-resolution have shown impressive success. Dong et al.\\[ [6]\\] firstly introduced CNN with only three Conv layers for image SR. Residual learning was introduced in VDSR \\[ [16]\\], reaching 20 Conv layers. Lim et al. proposed EDSR \\[ [21]\\] with simplified residual block \\[ [10]\\]. Zhang et al. proposed an even deeper network RCAN \\[ [49]\\].\nLater, Mei et al. proposed CSNLN \\[ [50]\\] by combining feature correlations, and external statistics. Most of them have achieved state-of-the-art results with deeper and wider networks. Recently, Transformer has gained a surge of interest for image restoration. Chen et al. proposed the first pre-trained image processing transformer IPT \\[ [3]\\].\nSwinIR \\[ [20]\\] first applies the residual Swin Transformer block to the image restoration for deep feature extraction.\nRestormer \\[ [44]\\] proposed a multi-scale hierarchical design that incorporates efficient Transformer blocks by modifying self-attention and MLP.\nSimilarly, Uformer \\[ [41]\\] proposed a LeWin Transformer block for image restoration. While CNNs and Transformers have demonstrated impressive performance in SISR, they suffer from heavy memory cost and computational overhead.\n\nEfficient SISR.\nTo improve the model efficiency, various approaches have been proposed to reduce model’s redundancy, such as neural architecture search (NAS) \\[ [4], [34]\\], compact block design \\[ [1], [33], [27], [37], [41], [44]\\], pruning \\[ [38], [40]\\], and low-bit quantization \\[ [24], [19], [13]\\]. The strength of NAS manifests in searching the optimal architecture but is time-consuming and computationally expensive due to the massive search space.\nAfterwards, compact SR model designs have attracted rising attention and achieved remarkable progress \\[ [47], [15], [1], [8]\\].\nZhang et al. proposed ELAN \\[ [47]\\] that designs a group-wise multi-scale self-attention (GMSA) module to exploit the long-range image dependency, achieving even better results against the transformer-based SR models but with significantly less complexity.\nPruning \\[ [38], [40]\\] and quantization \\[ [24], [19], [13]\\] are other two types of methods to remove model redundancy by sparsity and low-bit quantization mappings. Although those lightweight networks have achieved great progress, they still need considerable extra computation resources.\n\nKnowledge Distillation for SISR.\nKnowledge distillation is widely recognized as an effective model compression method that can significantly reduce the computation overload and improve student’s capability by transferring dark knowledge from the large teacher model to the lightweight student model \\[ [9], [42], [12]\\].\nRecently, several attempts have also been made for image super-resolution knowledge distillation.\nLee _et al_. \\[ [18]\\] first pre-trained the encoder and decoder using the pairs of the same HR images, and the privileged information is extracted from the decoder to obtain the statistical output location and scale maps as the knowledge.\nHe _et al._ proposed FAKD \\[ [11]\\] to distill the second-order statistical information from the affinity matrix of feature maps.\nWang _et al._ proposed CSD that incorporates self-distillation and contrastive learning \\[ [40]\\] by introducing extra simply upsampled LR images as negative samples.\nHowever, none of the existing SRKD methods have discussed how to customize a proper teacher for a student with limited capacity or whether a stronger teacher consistently benefits the capacity-limited student.\nFurthermore, existing SRKD techniques for SR are tailored to specific teacher-student architectures, focusing on either network depth \\[ [40]\\] or channel compression \\[ [11]\\], which is infeasible for practical compounded compression applications.",
+      "citations": [
+        {
+          "start_pos": 106,
+          "end_pos": 123,
+          "text": "Dong et al.\\[ [6]",
+          "paper_id": "bib.bib6",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 235,
+          "end_pos": 239,
+          "text": "[16]",
+          "paper_id": "bib.bib16",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 268,
+          "end_pos": 300,
+          "text": "Lim et al. proposed EDSR \\[ [21]",
+          "paper_id": "bib.bib21",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 337,
+          "end_pos": 341,
+          "text": "[10]",
+          "paper_id": "bib.bib10",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 345,
+          "end_pos": 402,
+          "text": "Zhang et al. proposed an even deeper network RCAN \\[ [49]",
+          "paper_id": "bib.bib49",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 413,
+          "end_pos": 446,
+          "text": "Mei et al. proposed CSNLN \\[ [50]",
+          "paper_id": "bib.bib50",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 669,
+          "end_pos": 751,
+          "text": "Chen et al. proposed the first pre-trained image processing transformer IPT \\[ [3]",
+          "paper_id": "bib.bib3",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 765,
+          "end_pos": 769,
+          "text": "[20]",
+          "paper_id": "bib.bib20",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 889,
+          "end_pos": 893,
+          "text": "[44]",
+          "paper_id": "bib.bib44",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1045,
+          "end_pos": 1049,
+          "text": "[41]",
+          "paper_id": "bib.bib41",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1413,
+          "end_pos": 1416,
+          "text": "[4]",
+          "paper_id": "bib.bib4",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1418,
+          "end_pos": 1422,
+          "text": "[34]",
+          "paper_id": "bib.bib34",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1450,
+          "end_pos": 1453,
+          "text": "[1]",
+          "paper_id": "bib.bib1",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1455,
+          "end_pos": 1459,
+          "text": "[33]",
+          "paper_id": "bib.bib33",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1461,
+          "end_pos": 1465,
+          "text": "[27]",
+          "paper_id": "bib.bib27",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1467,
+          "end_pos": 1471,
+          "text": "[37]",
+          "paper_id": "bib.bib37",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1473,
+          "end_pos": 1477,
+          "text": "[41]",
+          "paper_id": "bib.bib41",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1479,
+          "end_pos": 1483,
+          "text": "[44]",
+          "paper_id": "bib.bib44",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1498,
+          "end_pos": 1502,
+          "text": "[38]",
+          "paper_id": "bib.bib38",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1504,
+          "end_pos": 1508,
+          "text": "[40]",
+          "paper_id": "bib.bib40",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1540,
+          "end_pos": 1544,
+          "text": "[24]",
+          "paper_id": "bib.bib24",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1546,
+          "end_pos": 1550,
+          "text": "[19]",
+          "paper_id": "bib.bib19",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1552,
+          "end_pos": 1556,
+          "text": "[13]",
+          "paper_id": "bib.bib13",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1818,
+          "end_pos": 1822,
+          "text": "[47]",
+          "paper_id": "bib.bib47",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1824,
+          "end_pos": 1828,
+          "text": "[15]",
+          "paper_id": "bib.bib15",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1830,
+          "end_pos": 1833,
+          "text": "[1]",
+          "paper_id": "bib.bib1",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1835,
+          "end_pos": 1838,
+          "text": "[8]",
+          "paper_id": "bib.bib8",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1842,
+          "end_pos": 1876,
+          "text": "Zhang et al. proposed ELAN \\[ [47]",
+          "paper_id": "bib.bib47",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 2111,
+          "end_pos": 2115,
+          "text": "[38]",
+          "paper_id": "bib.bib38",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 2117,
+          "end_pos": 2121,
+          "text": "[40]",
+          "paper_id": "bib.bib40",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 2144,
+          "end_pos": 2148,
+          "text": "[24]",
+          "paper_id": "bib.bib24",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 2150,
+          "end_pos": 2154,
+          "text": "[19]",
+          "paper_id": "bib.bib19",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 2156,
+          "end_pos": 2160,
+          "text": "[13]",
+          "paper_id": "bib.bib13",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 2695,
+          "end_pos": 2698,
+          "text": "[9]",
+          "paper_id": "bib.bib9",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 2700,
+          "end_pos": 2704,
+          "text": "[42]",
+          "paper_id": "bib.bib42",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 2706,
+          "end_pos": 2710,
+          "text": "[12]",
+          "paper_id": "bib.bib12",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 2828,
+          "end_pos": 2832,
+          "text": "[18]",
+          "paper_id": "bib.bib18",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 3081,
+          "end_pos": 3085,
+          "text": "[11]",
+          "paper_id": "bib.bib11",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 3273,
+          "end_pos": 3277,
+          "text": "[40]",
+          "paper_id": "bib.bib40",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 3696,
+          "end_pos": 3700,
+          "text": "[40]",
+          "paper_id": "bib.bib40",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 3729,
+          "end_pos": 3733,
+          "text": "[11]",
+          "paper_id": "bib.bib11",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        }
+      ]
+    },
+    "3 Methodology": {
+      "content": "![Refer to caption]Figure 2: Framework of the MiPKD method. MiPKD utilizes the multi-granularity prior mixture to constrain the KD process.\nThe feature prior mixer dynamically combines priors from the teacher and student, and the block prior mixer adopts a coarser-grained prior mixture at the network block level.\n\n### 3.1 Preliminaries and Notations\n\nGiven a low-resolution input image IL​Rsubscript𝐼𝐿𝑅I\\_{LR}, the deep SR model ℱ​(⋅)ℱ⋅\\\\mathcal{F}(\\\\cdot) aims to reconstruct the high-resolution image IS​R=ℱ​(IL​R;Θ)subscript𝐼𝑆𝑅ℱsubscript𝐼𝐿𝑅ΘI\\_{SR}=\\\\mathcal{F}(I\\_{LR};\\\\Theta) with fine details and looking similar with corresponding high-resolution image IH​Rsubscript𝐼𝐻𝑅I\\_{HR}, where ΘΘ\\\\Theta is the model parameters.\nExisting KD methods for SR can be divided into two categories: logits-based and feature-based.\nThe former compels the student model ℱSsubscriptℱ𝑆\\\\mathcal{F}\\_{S} to produce the same prediction as the teacher model\n\n|     |     |     |     |\n| --- | --- | --- | --- |\n|  | ℒl​o​g​i​t​s=𝒟l​o​g​i​t​s​(IS​RS,IS​RT)subscriptℒ𝑙𝑜𝑔𝑖𝑡𝑠subscript𝒟𝑙𝑜𝑔𝑖𝑡𝑠superscriptsubscript𝐼𝑆𝑅𝑆superscriptsubscript𝐼𝑆𝑅𝑇\\\\mathcal{L}\\_{logits}=\\\\mathcal{D}\\_{logits}(I\\_{SR}^{S},~{}I\\_{SR}^{T}) |  | (1) |\n\nwhere IS​RS=ℱS​(IL​R;ΘS)superscriptsubscript𝐼𝑆𝑅𝑆subscriptℱ𝑆subscript𝐼𝐿𝑅superscriptΘ𝑆I\\_{SR}^{S}=\\\\mathcal{F}\\_{S}(I\\_{LR};\\\\Theta^{S}) and IS​RT=ℱT​(IL​R;ΘT)superscriptsubscript𝐼𝑆𝑅𝑇subscriptℱ𝑇subscript𝐼𝐿𝑅superscriptΘ𝑇I\\_{SR}^{T}=\\\\mathcal{F}\\_{T}(I\\_{LR};\\\\Theta^{T}) represent the output SR images of the student and teacher models, and 𝒟l​o​g​i​t​ssubscript𝒟𝑙𝑜𝑔𝑖𝑡𝑠\\\\mathcal{D}\\_{logits} is the loss function that measures the difference between two models’ outputs, e.g. the L1subscript𝐿1L\\_{1} or L2subscript𝐿2L\\_{2} loss function.\nSimilarly, the feature-based KD methods aim to mimic the rich implicit learning representations between the teacher and the student, which also can be represented as an auxiliary loss item:\n\n|     |     |     |     |\n| --- | --- | --- | --- |\n|  | ℒf​e​a​t=𝒟f​e​a​t​(𝒯s​(FkS),𝒯t​(FkT))subscriptℒ𝑓𝑒𝑎𝑡subscript𝒟𝑓𝑒𝑎𝑡subscript𝒯𝑠subscriptsuperscriptF𝑆𝑘subscript𝒯𝑡subscriptsuperscriptF𝑇𝑘\\\\mathcal{L}\\_{feat}=\\\\mathcal{D}\\_{feat}(\\\\mathcal{T}\\_{s}(\\\\mathrm{F}^{S}\\_{k}),~{}\\\\mathcal{T}\\_{t}(\\\\mathrm{F}^{T}\\_{k})) |  | (2) |\n\nwhere FkSsubscriptsuperscriptF𝑆𝑘\\\\mathrm{F}^{S}\\_{k} and FkTsubscriptsuperscriptF𝑇𝑘{\\\\mathrm{F}}^{T}\\_{k} denote the feature maps of the student model and the teacher model at the k𝑘k-th distillation position, respectively. 𝒯tsubscript𝒯𝑡\\\\mathcal{T}\\_{t} and 𝒯ssubscript𝒯𝑠\\\\mathcal{T}\\_{s}\nare the transformations applied on raw feature maps and 𝒟f​e​a​tsubscript𝒟𝑓𝑒𝑎𝑡\\\\mathcal{D}\\_{feat} is the loss function for feature distillation.\n\n### 3.2 Mixture of Prior Knowledge Distillation\n\nAccording to earlier research and analysis, there is a negative correlation between student performance and the teacher’s model’s capacity as the capacity gap widens between students and teachers \\[ [26]\\]. Since the student models struggle to grasp the capacity to extract semantic information from the bigger model. In the process of feature distillation, it is crucial to illustrate the effective retrieval and transfer of the teacher’s prior knowledge to the student network.\nOur proposed feature distillation method,\nsurpasses FAKD, CSD and other deep or channel kd methods as Fig. [1]Figure 1 ‣ 1 Introduction ‣ Knowledge Distillation with Multi-granularity Mixture of Priors for Image Super-Resolution\") shown. This is accomplished by incorporating the teacher’s knowledge with the student’s network at feature and block levels, within a stochastic dynamic framework. This approach reduces the capacity disparity between the teacher and student, thereby enhancing the performance of the student model.\n\nFeature Prior Mixer.\n\nFig. [2]Figure 2 ‣ 3 Methodology ‣ Knowledge Distillation with Multi-granularity Mixture of Priors for Image Super-Resolution\") illustrates the hybrid prior knowledge framework at the feature level, including the encoder modules for the teacher and student feature maps and the decoder module for the fused feature map. At the k𝑘k-th feature distillation position, initially, the feature maps of both the student model\nFkSsubscriptsuperscriptF𝑆𝑘\\\\mathrm{\\\\textbf{F}}^{S}\\_{k}\nand teacher model FkTsubscriptsuperscriptF𝑇𝑘\\\\mathrm{\\\\textbf{F}}^{T}\\_{k} are fed into the respective encoder models to obtain the representations\nZkSsubscriptsuperscriptZ𝑆𝑘\\\\mathrm{\\\\textbf{Z}}^{S}\\_{k}, ZkT∈ℝC×H×WsubscriptsuperscriptZ𝑇𝑘superscriptℝ𝐶𝐻𝑊\\\\mathrm{\\\\textbf{Z}}^{T}\\_{k}\\\\in{\\\\mathbb{R}}^{C\\\\times H\\\\times W}in a unified latent space, where C,H,W𝐶𝐻𝑊C,H,W are the dimension of the feature maps.\nThen the encoded feature maps are fused according to a random 3D-mask 𝐈M∈{0,1}C×H×Wsuperscript𝐈𝑀superscript01𝐶𝐻𝑊\\\\mathbf{I}^{M}\\\\in\\\\{0,1\\\\}^{C\\\\times H\\\\times W} as\n\n|     |     |     |     |\n| --- | --- | --- | --- |\n|  | FkE=D​(ZkS⊙(1−𝐈M)+𝐙kT⊙(𝐈M)),subscriptsuperscript𝐹𝐸𝑘𝐷direct-productsubscriptsuperscript𝑍𝑆𝑘1superscript𝐈𝑀direct-productsubscriptsuperscript𝐙𝑇𝑘superscript𝐈𝑀F^{E}\\_{k}=D(Z^{S}\\_{k}\\\\odot(1-\\\\mathbf{I}^{M})+\\\\mathbf{Z}^{T}\\_{k}\\\\odot(\\\\mathbf{I}^{M})), |  | (3) |\n\nwhere D𝐷D is a decoder that reverts the fused feature map as the enhanced feature map representation FkEsubscriptsuperscriptF𝐸𝑘\\\\mathrm{\\\\textbf{F}}^{E}\\_{k}, and ⊙direct-product\\\\odot denotes the element-wise product between matrices.\nThe student’s feature map is combined with the teacher’s prior knowledge with an encoder-decoder structure to reduce the discrepancy between them at the feature level. 𝐅kEsubscriptsuperscript𝐅𝐸𝑘\\\\mathbf{F}^{E}\\_{k} is subsequently utilized as an input to the subsequent block level prior mixer module.\nThe feature distillation loss ℒkf​e​a​tFsubscriptsuperscriptℒ𝑓𝑒𝑎subscript𝑡𝐹𝑘\\\\mathcal{L}^{feat\\_{F}}\\_{k} of Feature Prior Mixer is computed between 𝐅kEsubscriptsuperscript𝐅𝐸𝑘\\\\mathbf{F}^{E}\\_{k} and 𝐅kTsubscriptsuperscript𝐅𝑇𝑘\\\\mathbf{F}^{T}\\_{k} as\n\n|     |     |     |     |\n| --- | --- | --- | --- |\n|  | ℒkf​e​a​tF=𝒟f​e​a​t​(FkE,missing​FkT)subscriptsuperscriptℒ𝑓𝑒𝑎subscript𝑡𝐹𝑘subscript𝒟𝑓𝑒𝑎𝑡subscriptsuperscriptF𝐸𝑘missingsubscriptsuperscriptF𝑇𝑘\\\\mathcal{L}^{feat\\_{F}}\\_{k}=\\\\mathcal{D}\\_{feat}(\\\\mathrm{\\\\textbf{F}}^{E}\\_{k},~{}\\\\mathcal{\\\\mathrm{missing}}{\\\\textbf{F}}^{T}\\_{k}) |  | (4) |\n\nAdditionally, in order to enhance the reconstruction capability of the decoder and ensure the stability of the training process,\nthe auxiliary enhanced feature map FkE′subscriptsuperscriptFsuperscript𝐸′𝑘\\\\mathrm{\\\\textbf{F}}^{{}^{\\\\prime}E}\\_{k} is obtained by directly inputting the teacher’s feature map to the teacher’s encoder and decoder without applying masking and mixing strategy. The auxiliary “auto-encoder” loss ℒka​esubscriptsuperscriptℒ𝑎𝑒𝑘\\\\mathcal{L}^{ae}\\_{k} is computed\nas\n\n|     |     |     |     |\n| --- | --- | --- | --- |\n|  | ℒka​e=𝒟f​e​a​t​(FkE′,missing​FkT).subscriptsuperscriptℒ𝑎𝑒𝑘subscript𝒟𝑓𝑒𝑎𝑡subscriptsuperscriptFsuperscript𝐸′𝑘missingsubscriptsuperscriptF𝑇𝑘\\\\mathcal{L}^{ae}\\_{k}=\\\\mathcal{D}\\_{feat}(\\\\mathrm{\\\\textbf{F}}^{{}^{\\\\prime}E}\\_{k},~{}\\\\mathcal{\\\\mathrm{missing}}{\\\\textbf{F}}^{T}\\_{k}). |  | (5) |\n\nIt requires the encoder and decoder to serve as an auto-encoder structure, ensuring the decoded enhanced feature map is comparable with 𝐅𝐤𝐓superscriptsubscript𝐅𝐤𝐓\\\\mathbf{F\\_{k}^{T}}. The enhancement of the decoder contributes to the overall effectiveness of the feature prior mixer module.\n\nBlock Prior Mixer.\n\nExisting feature-based distillation methods on SR tasks mostly align the feature representations in the original space with Mean Absolute Error (MAE) or Mean Square Error (MSE).\nPrevious studies \\[ [29]\\] shows that distinct controllability properties and semantics may exist among the network of the similar architecture with various weights.\nStudent and teacher models with various dimensional space typically exist seperate distribution of semantic information \\[ [22]\\].\nTherefore, solely aligning features at the present distillation node with the same magnitudes of distance can leads the student model to learn entirely different information.\nTo tackle this issue, we propose to align the networks’ ability of processing and representing information by assembling a dynamic combination of blocks and transmitting the fusion information from the Feature Prior Mixer to the enhanced network.\n\nTo construct an enhanced network (ℱEb​l​o​c​ksubscriptsuperscriptℱ𝑏𝑙𝑜𝑐𝑘𝐸\\\\mathcal{F}^{block}\\_{E}) at distillation position k𝑘k, according to the Block Prior Mixing Option RksubscriptR𝑘\\\\mathrm{R}\\_{k} and DksubscriptD𝑘\\\\mathrm{D}\\_{k} randomly sampled from {0,1}01\\\\{0,1\\\\}, the output of Feature Prior Mixer 𝐅kEsubscriptsuperscript𝐅𝐸𝑘\\\\mathbf{F}^{E}\\_{k} is forwarding propagated to the student network (Rk=1subscriptR𝑘1\\\\mathrm{R}\\_{k}=1,Dk=1subscriptD𝑘1\\\\mathrm{D}\\_{k}=1), teacher network (Rk=0subscriptR𝑘0\\\\mathrm{R}\\_{k}=0,Dk=1subscriptD𝑘1\\\\mathrm{D}\\_{k}=1), or deposed (Dk=0subscriptD𝑘0\\\\mathrm{D}\\_{k}=0), as the dashed path exemplified in Figure [2]Figure 2 ‣ 3 Methodology ‣ Knowledge Distillation with Multi-granularity Mixture of Priors for Image Super-Resolution\"). ℬS(k)subscriptℬsubscript𝑆𝑘\\\\mathcal{B}\\_{{S}\\_{(k)}} and ℬT(k)subscriptℬsubscript𝑇𝑘\\\\mathcal{B}\\_{{T}\\_{(k)}} represent the block from student and teacher models at the current position respectively.\nℬO(k)subscriptℬsubscript𝑂𝑘\\\\mathcal{B}\\_{{O}\\_{(k)}} represents the mixed block at the current position based on RksubscriptR𝑘\\\\mathrm{R}\\_{k} and DksubscriptD𝑘\\\\mathrm{D}\\_{k} as formula [6]Equation 6 ‣ 3.2 Mixture of Prior Knowledge Distillation ‣ 3 Methodology ‣ Knowledge Distillation with Multi-granularity Mixture of Priors for Image Super-Resolution\") shown.\n\n|     |     |     |     |\n| --- | --- | --- | --- |\n|  | ℬO(k)=Dk​(Rk​ℬS(k)+(1−Rk)​ℬT(k)).subscriptℬsubscript𝑂𝑘subscriptD𝑘subscriptR𝑘subscriptℬsubscript𝑆𝑘1subscriptR𝑘subscriptℬsubscript𝑇𝑘\\\\mathcal{B}\\_{{O}\\_{(k)}}=\\\\mathrm{D}\\_{k}(\\\\mathrm{R}\\_{k}\\\\mathcal{B}\\_{{S}\\_{(k)}}+(1-\\\\mathrm{R}\\_{k})\\\\mathcal{B}\\_{{T}\\_{(k)}}). |  | (6) |\n\nBased on this process, denote the output of such concatenated network as IS​REsubscriptsuperscript𝐼𝐸𝑆𝑅I^{E}\\_{SR},\n\n|     |     |     |     |\n| --- | --- | --- | --- |\n|  | IS​RE=ℱEb​l​o​c​k​(IL​R;ΘS)=ℬO(k)​(𝐅kE)superscriptsubscript𝐼𝑆𝑅𝐸subscriptsuperscriptℱ𝑏𝑙𝑜𝑐𝑘𝐸subscript𝐼𝐿𝑅superscriptΘ𝑆subscriptℬsubscript𝑂𝑘subscriptsuperscript𝐅𝐸𝑘{I}\\_{SR}^{E}=\\\\mathcal{F}^{block}\\_{E}(I\\_{LR};\\\\Theta^{S})={\\\\mathcal{B}\\_{{O}\\_{(k)}}}(\\\\mathbf{F}^{E}\\_{k}) |  | (7) |\n\nThe feature knowledge distillation loss based on Block Prior Mixer is derived through the ultimate combined network output with the teacher output and ground truth as formula [9]Equation 9 ‣ 3.2 Mixture of Prior Knowledge Distillation ‣ 3 Methodology ‣ Knowledge Distillation with Multi-granularity Mixture of Priors for Image Super-Resolution\") shown, where w𝑤w represents the trade-off between the supervisions from teacher model and ground-truth (GT). For the SR tasks, w equals to 0.5 in the following experiments.\n\n|     |     |     |     |\n| --- | --- | --- | --- |\n|  | Lkf​e​a​tB=w​𝒟​(IS​RE,IS​RT)+(1−w)​𝒟​(IS​RE,IH​R)subscriptsuperscript𝐿𝑓𝑒𝑎subscript𝑡𝐵𝑘𝑤𝒟superscriptsubscript𝐼𝑆𝑅𝐸superscriptsubscript𝐼𝑆𝑅𝑇1𝑤𝒟superscriptsubscript𝐼𝑆𝑅𝐸subscript𝐼𝐻𝑅{L}^{feat\\_{B}}\\_{k}=w\\\\mathcal{D}(I\\_{SR}^{E},~{}I\\_{SR}^{T})+(1-w)\\\\mathcal{D}(I\\_{SR}^{E},~{}I\\_{HR}) |  | (8) |\n\nIn addition, Lkf​e​a​tBsuperscriptsubscript𝐿𝑘𝑓𝑒𝑎subscript𝑡𝐵L\\_{k}^{feat\\_{B}} is ignored if the k𝑘k-th feature distillation position is dropped out. It is anticipated that there will be an attainment of interchangeability between the corresponding teacher and student network blocks, allowing the student to inherit and replicate the capabilities of the teacher model.\n\nThe Whole Pipeline.\n\nIn general,\nfor each feature distillation position k𝑘k, based on the pair of 𝐅kTsubscriptsuperscript𝐅𝑇𝑘\\\\mathbf{F}^{T}\\_{k} and 𝐅kSsubscriptsuperscript𝐅𝑆𝑘\\\\mathbf{F}^{S}\\_{k} as the input of Feature Prior Mixer, the random masked feature map of student is populated and fused with the teacher’s as 𝐅kEsubscriptsuperscript𝐅𝐸𝑘{\\\\mathbf{F}}^{E}\\_{k}, and the Lkf​e​a​tEsubscriptsuperscript𝐿𝑓𝑒𝑎subscript𝑡𝐸𝑘{L}^{feat\\_{E}}\\_{k} is computed to align with the initial teacher feature map in the same distribution space.\nMeanwhile, RksubscriptR𝑘\\\\mathrm{R}\\_{k} and DksubscriptD𝑘\\\\mathrm{D}\\_{k} determine the transmission direction of 𝐅kEsubscriptsuperscript𝐅𝐸𝑘{\\\\mathbf{F}}^{E}\\_{k} for each iteration, the students’ network for random block information is also exchanged and transmitted by the teacher’s as Fig. [2]Figure 2 ‣ 3 Methodology ‣ Knowledge Distillation with Multi-granularity Mixture of Priors for Image Super-Resolution\") shown.\nBesides logits-KD loss Ll​o​g​i​t​ssubscript𝐿𝑙𝑜𝑔𝑖𝑡𝑠{L}\\_{logits}, reconstruction loss Lr​e​csubscript𝐿𝑟𝑒𝑐{L}\\_{rec}, the feature losses in block level and feature level are accumulated:\n\n|     |     |     |     |\n| --- | --- | --- | --- |\n|  | Lt​o​t​a​l=λk​d​Ll​o​g​i​t​s+λr​e​c​Lr​e​c+∑k≤K(λf​e​a​t​Lkf​e​a​tE+λb​l​o​c​k​Lkf​e​a​tB).subscript𝐿𝑡𝑜𝑡𝑎𝑙subscript𝜆𝑘𝑑subscript𝐿𝑙𝑜𝑔𝑖𝑡𝑠subscript𝜆𝑟𝑒𝑐subscript𝐿𝑟𝑒𝑐subscript𝑘𝐾subscript𝜆𝑓𝑒𝑎𝑡subscriptsuperscript𝐿𝑓𝑒𝑎subscript𝑡𝐸𝑘subscript𝜆𝑏𝑙𝑜𝑐𝑘subscriptsuperscript𝐿𝑓𝑒𝑎subscript𝑡𝐵𝑘{L}\\_{total}={\\\\lambda\\_{kd}}{L}\\_{logits}+{\\\\lambda\\_{rec}}{L}\\_{rec}+\\\\sum\\_{k\\\\leq{K}}({\\\\lambda\\_{feat}}{L}^{feat\\_{E}}\\_{k}+{\\\\lambda\\_{block}}{L}^{feat\\_{B}}\\_{k}). |  | (9) |\n\nwhere λr​e​csubscript𝜆𝑟𝑒𝑐\\\\lambda\\_{rec}, λk​dsubscript𝜆𝑘𝑑\\\\lambda\\_{kd}, λf​e​a​tsubscript𝜆𝑓𝑒𝑎𝑡\\\\lambda\\_{feat}, λb​l​o​c​ksubscript𝜆𝑏𝑙𝑜𝑐𝑘\\\\lambda\\_{block} represent the weights for reconstruction loss, logits-kd loss, feature prior mixer and block prior mixer respectively.\nThe teacher’s prior knowledge is effectively transferred through this multi-level distillation process. The following experiments illustrate the efficiency of the above strategy.\n\nTable 1: SR model specifications on ×\\\\times4 experimental settings. The #Params, FLOPs and FPS are calculated with a 256×\\\\times256×\\\\times3 input image and FPS is computed on a single NVIDIA V100 GPU.\n\n|     |     |     |     |     |     |     |     |\n| --- | --- | --- | --- | --- | --- | --- | --- |\n| Model | Role | Network | FLOPs (G) | #Params (M) | FPS |\n| Channel | Block | Group |\n| EDSR | Teacher | 256 | 32 | - | 3293.35 | 43.09 | 3.2 |\n| Student 1 | 64 | 32 | - | 207.28 | 2.70 | 33.958 |\n| Student 2 | 64 | 16 | - | 129.97 (25.3×\\\\times) | 1.52 (28.3×\\\\times) | 53.3 |\n| RCAN | Teacher | 64 | 20 | 10 | 1044.03 | 15.59 | 6.3 |\n| Student | 64 | 6 | 10 | 366.98 | 5.17 | 12.3 |\n| SwinIR | Teacher | 180 | 6 | - | 861.27 | 11.90 M | 0.459 |\n| Student | 60 | 4 | - | 121.48 | 1.24 M | 0.874 |",
+      "citations": [
+        {
+          "start_pos": 2946,
+          "end_pos": 2950,
+          "text": "[26]",
+          "paper_id": "bib.bib26",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 7633,
+          "end_pos": 7637,
+          "text": "[29]",
+          "paper_id": "bib.bib29",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 7902,
+          "end_pos": 7906,
+          "text": "[22]",
+          "paper_id": "bib.bib22",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        }
+      ]
+    },
+    "4 Experimental Results": {
+      "content": "### 4.1 Experiment Setups\n\nBackbones and Evaluation. We use EDSR \\[ [21]\\], RCAN \\[ [49]\\], and SwinIR \\[ [20]\\] as backbone models to verify the effectiveness of MiPKD and compare it with prior KD methods on ×2absent2\\\\times 2, ×3absent3\\\\times 3, and ×4absent4\\\\times 4 super-resolving scales.\nThe SR network specifications and some statistics are presented in [Tab.1]In 3.2 Mixture of Prior Knowledge Distillation ‣ 3 Methodology ‣ Knowledge Distillation with Multi-granularity Mixture of Priors for Image Super-Resolution\"), including the number of channels, residual blocks and residual groups (RCAN), number of parameters (#Params), FLOPs, and inference speed (frame per second, FPS). To evaluate the KD methods under high compression rate, we trained an extra EDSR student network.\n\nTable 2: Quantitative comparison of distilling EDSR \\[ [21]\\] on the benchmark datasets. In these experiments, the EDSR student model of c64b32 is distilled by the teacher model of c256b32.\n\n| Scale | Method | Set5 | Set14 | BSD100 | Urban100 |\n| --- | --- | --- | --- | --- | --- |\n| PSNR/SSIM | PSNR/SSIM | PSNR/SSIM | PSNR/SSIM |\n| --- | --- | --- | --- |\n| x2 | Teacher | 38.20/0.9606 | 34.02/0.9204 | 32.37/0.9018 | 33.10/0.9363 |\n| Scratch | 38.00/0.9605 | 33.57/0.9171 | 32.17/0.8996 | 31.96/0.9268 |\n| KD | 38.04/0.9606 | 33.58/0.9172 | 32.19/0.8998 | 31.98/0.9269 |\n| RKD | 38.03/0.9606 | 33.57/0.9173 | 32.18/0.8998 | 31.96/0.9270 |\n| AT | 37.96/0.9603 | 33.48/0.9167 | 32.12/0.8990 | 31.71/0.9241 |\n| FitNet | 37.59/0.9589 | 33.09/0.9136 | 31.79/0.8953 | 30.46/0.9111 |\n| FAKD | 37.99/0.9606 | 33.60/0.9173 | 32.19/0.8998 | 32.04/0.9275 |\n| CSD | 38.06/0.9607 | 33.65/0.9179 | 32.22/0.9004 | 32.26/0.9300 |\n| MipKD | 38.16/0.9611 | 33.85/0.9194 | 32.27/0.9008 | 32.52/0.9318 |\n| x3 | Teacher | 34.76/0.929 | 30.66/0.8481 | 29.32/0.8104 | 29.02/0.8685 |\n| Scratch | 34.39/0.927 | 30.32/0.8417 | 29.08/0.8046 | 27.99/0.8489 |\n| KD | 34.43/0.9273 | 30.34/0.8422 | 29.10/0.8050 | 28.00/0.8491 |\n| RKD | 34.43/0.9274 | 30.33/0.8423 | 29.09/0.8051 | 27.96/0.8493 |\n| AT | 34.29/0.9262 | 30.26/0.8406 | 29.03/0.8035 | 27.76/0.8443 |\n| FitNet | 33.35/0.9178 | 29.71/0.8323 | 28.62/0.7949 | 26.61/0.8167 |\n| FAKD | 34.39/0.9272 | 30.34/0.8426 | 29.10/0.8052 | 28.07/0.8511 |\n| CSD | 34.45/0.9275 | 30.32/0.8430 | 29.11/0.8061 | 28.21/0.8549 |\n| MipKD | 34.59/0.9287 | 30.48/0.8447 | 29.19/0.8070 | 28.41/0.8571 |\n| x4 | Teacher | 32.65/0.9005 | 28.95/0.7903 | 27.81/0.744 | 26.87/0.8086 |\n| Scratch | 32.29/0.8965 | 28.68/0.7840 | 27.64/0.7380 | 26.21/0.7893 |\n| KD | 32.30/0.8965 | 28.70/0.7842 | 27.64/0.7382 | 26.21/0.7897 |\n| RKD | 32.30/0.8965 | 28.69/0.7842 | 27.64/0.7383 | 26.20/0.7899 |\n| AT | 32.22/0.8952 | 28.63/0.7825 | 27.59/0.7365 | 25.97/0.7825 |\n| FitNet | 31.65/0.8873 | 28.33/0.7768 | 27.38/0.7309 | 25.40/0.7637 |\n| FAKD | 32.27/0.8960 | 28.65/0.7836 | 27.62/0.7379 | 26.18/0.7895 |\n| CSD | 32.34/0.8974 | 28.72/0.7856 | 27.68/0.7396 | 26.34/0.7948 |\n| MipKD | 32.46/0.8981 | 28.79/0.7863 | 27.71/0.7400 | 26.45/0.7960 |\n\nTable 3: Quantitative comparison on RCAN \\[ [49]\\] architecture on the benchmark datasets. In these experiments, the RCAN student model of c64b6 is distilled by the teacher model of c64b20.\n\n| Scale | Method | Set5 | Set14 | BSD100 | Urban100 |\n| --- | --- | --- | --- | --- | --- |\n| PSNR/SSIM | PSNR/SSIM | PSNR/SSIM | PSNR/SSIM |\n| --- | --- | --- | --- |\n| x2 | Teacher | 38.27/0.9614 | 34.13/0.9216 | 32.41/0.9027 | 33.34/0.9384 |\n| Scratch | 38.13/0.9610 | 33.78/0.9194 | 32.26/0.9007 | 32.63/0.9327 |\n| KD | 38.17/0.9611 | 33.83/0.9197 | 32.29/0.9010 | 32.67/0.9329 |\n| RKD | 38.18/0.9612 | 33.78/0.9191 | 32.29/0.9011 | 32.70/0.9330 |\n| AT | 38.13/0.9610 | 33.70/0.9187 | 32.25/0.9005 | 32.48/0.9313 |\n| FitNet | 37.97/0.9602 | 33.57/0.9174 | 32.19/0.8999 | 32.06/0.9279 |\n| FAKD | 38.17/0.9612 | 33.83/0.9199 | 32.29/0.9011 | 32.65/0.9330 |\n| MiPKD | 38.21/0.9613 | 33.92/0.9203 | 32.32/0.9015 | 32.83/0.9344 |\n| x3 | Teacher | 34.74/0.9299 | 30.65/0.8482 | 29.32/0.8111 | 29.09/0.8702 |\n| Scratch | 34.61/0.9288 | 30.45/0.8444 | 29.18/0.8074 | 28.59/0.8610 |\n| KD | 34.61/0.9291 | 30.47/0.8447 | 29.21/0.8080 | 28.62/0.8612 |\n| RKD | 34.67/0.9292 | 30.48/0.8451 | 29.21/0.8080 | 28.60/0.8610 |\n| AT | 34.55/0.9287 | 30.43/0.8438 | 29.17/0.8070 | 28.43/0.8577 |\n| FitNet | 34.21/0.9248 | 30.20/0.8399 | 29.05/0.8044 | 27.89/0.8472 |\n| FAKD | 34.63/0.9290 | 30.51/0.8453 | 29.21/0.8079 | 28.62/0.8612 |\n| MiPKD | 34.72/0.9296 | 30.55/0.8458 | 29.25/0.8087 | 28.76/0.8640 |\n| x4 | Teacher | 32.63/0.9002 | 28.87/0.7889 | 27.77/0.7436 | 26.82/0.8087 |\n| Scratch | 32.38/0.8971 | 28.69/0.7842 | 27.63/0.7379 | 26.36/0.7947 |\n| KD | 32.45/0.8980 | 28.76/0.7860 | 27.67/0.7400 | 26.49/0.7982 |\n| RKD | 32.39/0.8974 | 28.74/0.7856 | 27.67/0.7399 | 26.47/0.7981 |\n| AT | 32.31/0.8967 | 28.69/0.7839 | 27.64/0.7385 | 26.29/0.7927 |\n| FitNet | 31.99/0.8899 | 28.50/0.7789 | 27.55/0.7353 | 25.90/0.7791 |\n| FAKD | 32.46/0.8980 | 28.77/0.7860 | 27.68/0.7400 | 26.50/0.7980 |\n| MiPKD | 32.46/0.8982 | 28.77/0.7860 | 27.69/0.7402 | 26.55/0.7998 |\n\nWe compare MiPKD with the baselines: train from scratch, Logits-KD \\[ [12]\\], RKD \\[ [28]\\], AT \\[ [43]\\], FitNet \\[ [32]\\], FAKD \\[ [11]\\], and CSD \\[ [40]\\]. Since the CSD is a self-distillation method in the channel-spliting manner, it’s not applicable to the RCAN experiments of network depth distillation.\nThe results for ×4 EDSR trained with CSD are obtained by testing the provided checkpoint, and the ×2 and ×3 ones are reproduced by us since the checkpoints are unavailable.\nTo evaluate quality of SR model’s output, we calculate the peak signal-to-noise ratio (PSNR) and the structural similarity index (SSIM) on the Y channel of the YCbCr color space. We use 800 images from DIV2K \\[ [35]\\] for training and evaluate SR models on four benchmark datasets: Set5 \\[ [2]\\], Set14 \\[ [45]\\], BSD100 \\[ [25]\\], and Urban100 \\[ [14]\\].\n\nTraining Details. All models are trained using Adam \\[ [17]\\] optimizer with β1=0.9subscript𝛽10.9\\\\beta\\_{1}=0.9, β2=0.99subscript𝛽20.99\\\\beta\\_{2}=0.99 and ϵ=10−8italic-ϵsuperscript108\\\\epsilon=10^{-8}, with a batch size of 16 and a total of 2.5×1052.5superscript1052.5\\\\times 10^{5} updates. The initial learning rate is set to 10−4superscript10410^{-4} and is decayed by a factor of 10 at every 105superscript10510^{5} iteration. We set the loss weights λ1subscript𝜆1\\\\lambda\\_{1} and λ2subscript𝜆2\\\\lambda\\_{2} to 10 and 1, respectively. The proposed MiPKD is implemented by the BasicSR \\[ [39]\\] and PyTorch \\[ [30]\\] framework and train them using 4 NVIDIA V100 GPUs. The LR images used for training and evaluation were obtained by down-sampling the HR images with the bicubic degradation method. During training, the input images are randomly cropped into 48×48484848\\\\times 48 patches and augmented with random horizontal/vertical flips and rotations.\n\n### 4.2 Results and Comparison\n\nTable 4: Quantitative comparison of distilling SwinIR \\[ [20]\\] on the benchmark datasets.\n\n| Scale | Method | Set5 | Set14 | BSD100 | Urban100 |\n| --- | --- | --- | --- | --- | --- |\n| PSNR | SSIM | PSNR | SSIM | PSNR | SSIM | PSNR | SSIM |\n| --- | --- | --- | --- | --- | --- | --- | --- |\n| 2 | Teacher | 38.36 | 0.9620 | 34.14 | 0.9227 | 32.45 | 0.9030 | 33.40 | 0.9394 |\n| Scratch | 38.00 | 0.9607 | 33.56 | 0.9178 | 32.19 | 0.9000 | 32.05 | 0.9279 |\n| KD | 38.04 | 0.9608 | 33.61 | 0.9184 | 32.22 | 0.9003 | 32.09 | 0.9282 |\n| MipKD | 38.14 | 0.9611 | 33.76 | 0.9194 | 32.29 | 0.9011 | 32.46 | 0.9313 |\n| 3 | Teacher | 34.89 | 0.9312 | 30.77 | 0.8503 | 29.37 | 0.8124 | 29.29 | 0.8744 |\n| Scratch | 34.41 | 0.9273 | 30.43 | 0.8437 | 29.12 | 0.8062 | 28.20 | 0.8537 |\n| KD | 34.44 | 0.9275 | 30.45 | 0.8443 | 29.14 | 0.8066 | 28.23 | 0.8545 |\n| MipKD | 34.53 | 0.9283 | 30.52 | 0.8456 | 29.19 | 0.8079 | 28.47 | 0.8591 |\n| 4 | Teacher | 32.72 | 0.9021 | 28.94 | 0.7914 | 27.83 | 0.7459 | 27.07 | 0.8164 |\n| Scratch | 32.31 | 0.8955 | 28.67 | 0.7833 | 27.61 | 0.7379 | 26.15 | 0.7884 |\n| KD | 32.27 | 0.8954 | 28.67 | 0.7833 | 27.62 | 0.7380 | 26.15 | 0.7887 |\n| MipKD | 32.39 | 0.8971 | 28.76 | 0.7854 | 27.68 | 0.7403 | 26.37 | 0.7956 |\n\nComparison with Baseline Methods.\nQuantitative results for training EDSR \\[ [21]\\], RCAN \\[ [49]\\], and SwinIR \\[ [20]\\] of three SR scales\nare presented in [Tab.2]In 4.1 Experiment Setups ‣ 4 Experimental Results ‣ Knowledge Distillation with Multi-granularity Mixture of Priors for Image Super-Resolution\"), [Tab.3]In 4.1 Experiment Setups ‣ 4 Experimental Results ‣ Knowledge Distillation with Multi-granularity Mixture of Priors for Image Super-Resolution\") and [Tab.4]In 4.2 Results and Comparison ‣ 4 Experimental Results ‣ Knowledge Distillation with Multi-granularity Mixture of Priors for Image Super-Resolution\"), from which we can draw the following conclusions:\n\n(1) Existing KD methods for SR have limited effects, some may even deteriorate the student model. The KD methods originally designed for high-level CV tasks (RKD, AT, FitNet), though applicable, hardly improve the SR models over training from scratch. For instance, AT and FitNet underperform the vanilla student models trained without KD among all settings.\n\n(2) The presented MiPKD outperforms existing KD methods baseline in width and depth compression, respectively.\nFor example, MiPKD outperforms the vanilla student in the most challenging dataset Urban100 in EDSR×\\\\times2, ×\\\\times3, and ×\\\\times4 settings by\n0.56 dB, 0.42 dB, 0.24 dB\nin terms of PSNR, respectively as [Tab.2]In 4.1 Experiment Setups ‣ 4 Experimental Results ‣ Knowledge Distillation with Multi-granularity Mixture of Priors for Image Super-Resolution\") shown. For depth distillation, compared with trainning from scratch,\n0.2 dB, 0.17 dB, 0.19 dB\nin terms of PSNR are improved, respectively, on Urban100 dataset in RCAN ×\\\\times2, ×\\\\times3, and ×\\\\times4 settings as [Tab.3]In 4.1 Experiment Setups ‣ 4 Experimental Results ‣ Knowledge Distillation with Multi-granularity Mixture of Priors for Image Super-Resolution\") shown.\n\n(3) The MiPKD is applicable to Transformer network and able to boost the model’s performance. Conventional feature-based KD methods are not directly applicable to the Transformer-type networks, so we compare MiPKD with training from scratch and the response-based KD \\[ [12]\\] in the experiments. The results in  [Tab.4]In 4.2 Results and Comparison ‣ 4 Experimental Results ‣ Knowledge Distillation with Multi-granularity Mixture of Priors for Image Super-Resolution\") indicate that the MiPKD could improve the transformer SR model by a large margin, further emphasizing its superior performance.\n\nTable 5: Quantitative comparison on training ×4 EDSR \\[ [21]\\] models with higher compression rate on the benchmark datasets.In these experiments, the EDSR student model of c64b16 is distilled by the teacher model of c256b32.\n\n| Method | Set5 | Set14 | BSD100 | Urban100 |\n| --- | --- | --- | --- | --- |\n| PSNR/SSIM | PSNR/SSIM | PSNR/SSIM | PSNR/SSIM |\n| --- | --- | --- | --- |\n| Teacher | 32.65/0.9005 | 28.95/0.7903 | 27.81/0.7440 | 26.87/0.8086 |\n| NOKD | 32.01/0.8924 | 28.46/0.7782 | 27.47/0.7324 | 25.61/0.7704 |\n| KD | 31.99/0.8921 | 28.46/0.7784 | 27.47/0.7327 | 25.60/0.7700 |\n| FitNet | 31.92/0.8912 | 28.42/0.7776 | 27.44/0.7317 | 25.52/0.7672 |\n| FAKD | 31.65/0.8879 | 28.32/0.7760 | 27.37/0.7303 | 25.38/0.7629 |\n| FAKD+CSD | 32.00/0.8930 | 28.47/0.7800 | 27.51/0.7340 | 25.79/0.7790 |\n| CSD+FAKD | 31.86/0.8907 | 28.42/0.7786 | 27.46/0.7327 | 25.58/0.7709 |\n| MiPKD+MiPKD | 32.17/0.8947 | 28.57/0.7812 | 27.57/0.7354 | 25.89/0.7794 |\n\nEvaluate MiPKD on high compression rate setting. [Tab.5]In 4.2 Results and Comparison ‣ 4 Experimental Results ‣ Knowledge Distillation with Multi-granularity Mixture of Priors for Image Super-Resolution\") shows the results of training ×4 scale EDSR model compressed in both network width and depth dimensions. The number of parameters are compressed for about 28 times from teacher model.\nDirectly distilling the student model by the teacher model yields negative effects on its performance. Two-stage KD with an intermediate teaching-assistant (TA) model \\[ [26]\\] are necessary in such case.\nTo make use of the CSD method, we compared different TA options, (1) Teacher->Student1->Student2: the whole pipeline is in a width-then-depth compression order. We adopt CSD to train the TA and FAKD for student. model (2) Depth-then-width: we first perform depth compression and then width compression. We adopt FAKD+CSD and MiPKD+MiPKD for the two-stage distillations. Using MiPKD to train both TA and student model yields the best results.\n\nVisual Comparison. [Fig.3]In 4.2 Results and Comparison ‣ 4 Experimental Results ‣ Knowledge Distillation with Multi-granularity Mixture of Priors for Image Super-Resolution\") compares the output of ×4 RCAN models differently trained for four images from the Urban100 dataset. For instance, for i​m​g​\\_​047𝑖𝑚𝑔\\_047img\\\\\\_047, MiPKD can reconstruct much better fine details than all baseline work. FAKD are prone to artifacts in the left-bottom of the building and the vanilla student, Logits-KD, FAKD, and FitNet are over-blurred. In contrast, MiPKD alleviates the blurring artifacts and reconstructs much more structural details. Similar observations can be found in other cases, e.g. the characters and anisotropic textures in i​m​g​\\_​073𝑖𝑚𝑔\\_073img\\\\\\_073. These visual comparisons are consistent with the quantitative results, demonstrating the superiority of MiPKD. More visual comparisons can be found in the supplementary materials.\n\n![Refer to caption]Figure 3: Visual comparison (×\\\\times4) with existing SRKD methods from Urban100. the numbers in the bracket denote the PSNR of the presented patches.",
+      "citations": [
+        {
+          "start_pos": 68,
+          "end_pos": 72,
+          "text": "[21]",
+          "paper_id": "bib.bib21",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 84,
+          "end_pos": 88,
+          "text": "[49]",
+          "paper_id": "bib.bib49",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 106,
+          "end_pos": 110,
+          "text": "[20]",
+          "paper_id": "bib.bib20",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 845,
+          "end_pos": 849,
+          "text": "[21]",
+          "paper_id": "bib.bib21",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 3078,
+          "end_pos": 3082,
+          "text": "[49]",
+          "paper_id": "bib.bib49",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 5147,
+          "end_pos": 5151,
+          "text": "[12]",
+          "paper_id": "bib.bib12",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 5162,
+          "end_pos": 5166,
+          "text": "[28]",
+          "paper_id": "bib.bib28",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 5176,
+          "end_pos": 5180,
+          "text": "[43]",
+          "paper_id": "bib.bib43",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 5194,
+          "end_pos": 5198,
+          "text": "[32]",
+          "paper_id": "bib.bib32",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 5210,
+          "end_pos": 5214,
+          "text": "[11]",
+          "paper_id": "bib.bib11",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 5229,
+          "end_pos": 5233,
+          "text": "[40]",
+          "paper_id": "bib.bib40",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 5772,
+          "end_pos": 5776,
+          "text": "[35]",
+          "paper_id": "bib.bib35",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 5851,
+          "end_pos": 5854,
+          "text": "[2]",
+          "paper_id": "bib.bib2",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 5867,
+          "end_pos": 5871,
+          "text": "[45]",
+          "paper_id": "bib.bib45",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 5885,
+          "end_pos": 5889,
+          "text": "[25]",
+          "paper_id": "bib.bib25",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 5909,
+          "end_pos": 5913,
+          "text": "[14]",
+          "paper_id": "bib.bib14",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 5973,
+          "end_pos": 5977,
+          "text": "[17]",
+          "paper_id": "bib.bib17",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 6512,
+          "end_pos": 6516,
+          "text": "[39]",
+          "paper_id": "bib.bib39",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 6534,
+          "end_pos": 6538,
+          "text": "[30]",
+          "paper_id": "bib.bib30",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 6968,
+          "end_pos": 6972,
+          "text": "[20]",
+          "paper_id": "bib.bib20",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 8231,
+          "end_pos": 8235,
+          "text": "[21]",
+          "paper_id": "bib.bib21",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 8247,
+          "end_pos": 8251,
+          "text": "[49]",
+          "paper_id": "bib.bib49",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 8269,
+          "end_pos": 8273,
+          "text": "[20]",
+          "paper_id": "bib.bib20",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 10305,
+          "end_pos": 10309,
+          "text": "[12]",
+          "paper_id": "bib.bib12",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 10690,
+          "end_pos": 10694,
+          "text": "[21]",
+          "paper_id": "bib.bib21",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 12146,
+          "end_pos": 12150,
+          "text": "[26]",
+          "paper_id": "bib.bib26",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        }
+      ]
+    },
+    "5 Ablation Study": {
+      "content": "To demonstrate the effectiveness of the proposed MiPKD scheme, we conduct detailed ablation studies on ×multiple scale RCAN and EDSR networks.\n\nAblation on the feature and block prior mixers for MipKD.\nThere are two fine-grained prior mixer modules in MiPKD, namely, the feature and block prior mixers. Their individual effects are ablated in [Tab.6]In 5 Ablation Study ‣ Knowledge Distillation with Multi-granularity Mixture of Priors for Image Super-Resolution\"). The result shows that employing the feature prior mixers leads to significant performance improvement and the block prior mixer based on it could further boost the student model.\n\nTable 6: Ablation on the two modules of MiPKD. In these experiments, the RCAN student model of c32b5g5 is distilled by the teacher model of c32b6g10. Applying both of the mixers together shows the best student model performance.\n\n| Feature Prior Mixer | Block Prior Mixer | Urban100 |\n| --- | --- | --- |\n| PSNR / SSIM |\n| --- |\n| ✗ | ✗ | 25.60 / 0.7700 |\n| ✓ | ✗ | 25.63 / 0.7711 |\n| ✗ | ✓ | 25.65 / 0.7717 |\n| ✓ | ✓ | 25.69 / 0.7728 |\n\nTable 7: Ablation on the encoder type in MiPKD feature mixer module without block prior mixer module.\n\n| Encoder Type | Urban100 |\n| --- | --- |\n| PSNR | SSIM |\n| --- | --- |\n| No Encoder | 24.51 | 0.7149 |\n| Shared Encoder | 25.61 | 0.7704 |\n| Separate Encoder | 25.63 | 0.7711 |\n\nAblation on the MiPKD feature prior mixer module.\nIn the feature prior mixer module of MiPKD, the teacher and student models’ feature maps are mapped to the latent space through corresponding encoders, thereby randomly mixed and stitched.\nWe present an analysis of the impact of the encoders in [Tab.7]In 5 Ablation Study ‣ Knowledge Distillation with Multi-granularity Mixture of Priors for Image Super-Resolution\") by comparing MiPKD with 1) removing the encoders, aligning and utilizing the teacher’s feature map directly and 2) sharing a encoder among the teacher and student model.\nRemoving the encoders would substantially deteriorate the student model’s performance. Due to the different distribution of teacher and student models’ feature maps, a shared encoder cannot effectively map them to the same latent space, leading to noisy mixtures.\nAssigning the teacher and student models separate encoders yields the best results, indicating that mixing feature priors in the same latent space is necessary.\n\n[Tab.8]In 5 Ablation Study ‣ Knowledge Distillation with Multi-granularity Mixture of Priors for Image Super-Resolution\") compares the encoders and decoder of different architecture. The result shows that convolutional neural network type exhibits better performance and is more suitable in SR task.\n\nBesides, the strategies of the mask generation are compared in [Tab.9]In 5 Ablation Study ‣ Knowledge Distillation with Multi-granularity Mixture of Priors for Image Super-Resolution\"). Compared with 1) masking according to the Cosine or CKA similarity between teacher and student models’ feature maps or 2) generating the complementary pairs of feature map by fixed grid pattern, the random 3D-mask exhibits the best performance and least calculation consumption. A more flexible, generalisable strategy is applied in the prior mixer module.\n\nTable 8: Ablation analysis on the encoder/decoder network architecture settings. The RCAN student model of c64b5g10 is distilled by the teacher model of c64b20g10.\n\n| Encoder Type | Set5 | Set14 | BSD100 | Urban100 |\n| --- | --- | --- | --- | --- |\n| PSNR/SSIM | PSNR/SSIM | PSNR/SSIM | PSNR/SSIM |\n| --- | --- | --- | --- |\n| MLP | 32.39/0.8976 | 28.72/0.7853 | 27.65/0.7391 | 26.42/0.7964 |\n| Conv | 32.46/0.8982 | 28.77/0.7860 | 27.69/0.7402 | 26.55/0.7998 |\n\nTable 9: Ablation analysis on the masking strategy for feature prior mixture.\n\n| masking strategy | Urban100 |\n| PSNR/SSIM |\n| Cosine | 25.62/0.7711 |\n| Grid mask | 25.61/0.7669 |\n| CKA | 25.63/0.7713 |\n| Random | 25.69/0.7728 |\n\nAblation on the “auto-encoder” loss Lka​esuperscriptsubscript𝐿𝑘𝑎𝑒L\\_{k}^{ae}.  We compared the MiPKD with and without Lka​esuperscriptsubscript𝐿𝑘𝑎𝑒L\\_{k}^{ae} in [Tab.10]In 5 Ablation Study ‣ Knowledge Distillation with Multi-granularity Mixture of Priors for Image Super-Resolution\"). The results indicate that the auxiliary “auto-encoder” loss makes the mapping between original feature maps’ space and the latent space more accurate, leading to better student model’s performance.\n\nTable 10: Ablation study on the auto-encoder loss.\n\n| Auto-encoder Loss | Set5 | Set14 | BSD100 | Urban100 |\n| --- | --- | --- | --- | --- |\n| PSNR/SSIM | PSNR/SSIM | PSNR/SSIM | PSNR/SSIM |\n| --- | --- | --- | --- |\n| ✗ | 32.4/0.8976 | 28.71/0.7851 | 27.66/0.7396 | 26.42/0.7971 |\n| ✓ | 32.46/0.8982 | 28.77/0.7860 | 27.69/0.7402 | 26.55/0.7998 |\n\nAblation on the Loss weights setting of feature and block mixers.\nThe impact of various weights of feature mixers loss and block mixer loss is evaluated as Tab. [11]Table 11 ‣ 5 Ablation Study ‣ Knowledge Distillation with Multi-granularity Mixture of Priors for Image Super-Resolution\") shown, where λr​e​csubscript𝜆𝑟𝑒𝑐\\\\lambda\\_{rec}, λk​dsubscript𝜆𝑘𝑑\\\\lambda\\_{kd}, λf​e​a​tsubscript𝜆𝑓𝑒𝑎𝑡\\\\lambda\\_{feat}, λb​l​o​c​ksubscript𝜆𝑏𝑙𝑜𝑐𝑘\\\\lambda\\_{block} represent the weights for reconstruction loss, logits-kd loss, feature prior mixer and block prior mixer respectively.\nConsidering the initial fluctuation caused by mixing the block from networks, λb​l​o​c​ksubscript𝜆𝑏𝑙𝑜𝑐𝑘\\\\lambda\\_{block} is applied as 0.1 presents the best student performance as the Tab. [10]Table 10 ‣ 5 Ablation Study ‣ Knowledge Distillation with Multi-granularity Mixture of Priors for Image Super-Resolution\") shown.\nIn addition, the reconstruction loss of auto-encoder in the feature prior mixer is introduced in the initial stage of training.\nAs the reconstruction ability of decoder improves, it’s beneficial for the prior mixer to fuse dark knowledge and restore the enhanced feature map efficiently.\n\nTable 11: Ablation analysis on the weights of different losses\n\n| λr​e​csubscript𝜆𝑟𝑒𝑐\\\\lambda\\_{rec} | λk​dsubscript𝜆𝑘𝑑\\\\lambda\\_{kd} | λf​e​a​tsubscript𝜆𝑓𝑒𝑎𝑡\\\\lambda\\_{feat} | λb​l​o​c​ksubscript𝜆𝑏𝑙𝑜𝑐𝑘\\\\lambda\\_{block} | Set5 | Set14 | BSD100 | Urban100 |\n| --- | --- | --- | --- | --- | --- | --- | --- |\n| PSNR/SSIM | PSNR/SSIM | PSNR/SSIM | PSNR/SSIM |\n| --- | --- | --- | --- |\n| 1 | 1 | 1 | 1 | 32.44/0.8972 | 28.75/0.7851 | 27.68/0.7399 | 26.51/0.7976 |\n| 1 | 1 | 0.1 | 1 | 32.34/0.8970 | 28.73/0.7849 | 27.67/0.7394 | 26.47/0.7960 |\n| 1 | 1 | 0.1 | 0.1 | 32.42/0.8980 | 28.75/0.7857 | 27.68/0.7399 | 26.51/0.7988 |\n| 1 | 1 | 1 | 0.1 | 32.46/0.8982 | 28.77/0.7860 | 27.69/0.7402 | 26.55/0.7998 |",
+      "citations": []
+    },
+    "6 Conclusion": {
+      "content": "In this paper, we present MiPKD, a simple yet significant KD framework for SR with feature and block mixers.\nBy incorporating the prior knowledge from teacher model to the student, the capacity disparity between them are reduced, and the feature alignment is achieved effectively.\nWe compare the proposed MiPKD with various kinds of distillation methods and demonstrate the superiority of our solutions.\nFor instance, it improves the EDSR network of three SR scale on Urban100 testing set in the range of 0.24 dB∼similar-to\\\\sim0.56 dB in terms of PSNR.\nThe presented MiPKD outperforms existing KD methods baseline in width, depth compression and compounded compression in SR tasks, which is flexible to a wide array of teacher-student kd architectures.",
+      "citations": []
+    }
+  },
+  "references": {
+    "data": {},
+    "key_map": {}
+  }
+}

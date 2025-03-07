@@ -1,0 +1,729 @@
+{
+  "title": "MAGNet: Motif-Agnostic Generation of Molecules from Shapes",
+  "abstract": "Recent advances in machine learning for molecules exhibit great potential for\nfacilitating drug discovery from in silico predictions. Most models for\nmolecule generation rely on the decomposition of molecules into frequently\noccurring substructures (motifs), from which they generate novel compounds.\nWhile motif representations greatly aid in learning molecular distributions,\nsuch methods struggle to represent substructures beyond their known motif set.\nTo alleviate this issue and increase flexibility across datasets, we propose\nMAGNet, a graph-based model that generates abstract shapes before allocating\natom and bond types. To this end, we introduce a novel factorisation of the\nmolecules' data distribution that accounts for the molecules' global context\nand facilitates learning adequate assignments of atoms and bonds onto shapes.\nDespite the added complexity of shape abstractions, MAGNet outperforms most\nother graph-based approaches on standard benchmarks. Importantly, we\ndemonstrate that MAGNet's improved expressivity leads to molecules with more\ntopologically distinct structures and, at the same time, diverse atom and bond\nassignments.",
+  "paper_id": "http://arxiv.org/abs/2305.19303v2",
+  "markdown_content": "\\\\floatsetup\n\n\\[table\\]capposition=top\n\n# MAGNet: Motif-Agnostic Generation    of Molecules from Shapes\n\nLeon Hetzel∗School of Computation, Information, and Technology, Technical University of Munich\nHelmholtz Munich\nMunich Data Science Institute, Technical University of Munich\nJohanna Sommer∗School of Computation, Information, and Technology, Technical University of Munich\nMunich Data Science Institute, Technical University of Munich\nBastian Rieck\nSchool of Computation, Information, and Technology, Technical University of Munich\nHelmholtz Munich\nFabian Theis\nSchool of Computation, Information, and Technology, Technical University of Munich\nHelmholtz Munich\nMunich Data Science Institute, Technical University of Munich\nStephan Günnemann\nSchool of Computation, Information, and Technology, Technical University of Munich\nMunich Data Science Institute, Technical University of Munich\n\n###### Abstract\n\nRecent advances in machine learning for molecules exhibit great potential for facilitating drug discovery from _in silico_ predictions.\nMost models for molecule generation rely on the decomposition of molecules into frequently occurring substructures (motifs), from which they generate novel compounds.\nWhile motif representations greatly aid in learning molecular distributions, such methods struggle to represent substructures beyond their known motif set.\nTo alleviate this issue and increase flexibility across datasets, we propose MAGNet, a graph-based model that generates abstract shapes before allocating atom and bond types.\nTo this end, we introduce a novel factorisation of the molecules’ data distribution that accounts for the molecules’ global context and facilitates learning adequate assignments of atoms and bonds onto shapes. Despite the added complexity of shape abstractions, MAGNet outperforms most other graph-based approaches on standard benchmarks. Importantly, we demonstrate that MAGNet’s improved expressivity leads to molecules with more topologically distinct structures and, at the same time, diverse atom and bond assignments.\n\n††footnotetext: ∗ These authors contributed equally††footnotetext:   Code is available at [github.com/TUM-DAML/MAGNet](https://github.com/TUM-DAML/MAGNet \"\")\n\n## 1 Introduction\n\nThe role of machine learning (ML) models in generating novel compounds has grown significantly, finding applications in fields like drug discovery, material science, and chemistry (Bian & Xie, [2021](https://ar5iv.org/html/2305.19303#bib.bib5 \"\"); Butler et al., [2018](https://ar5iv.org/html/2305.19303#bib.bib8 \"\"); Choudhary et al., [2022](https://ar5iv.org/html/2305.19303#bib.bib9 \"\"); Hetzel et al., [2022](https://ar5iv.org/html/2305.19303#bib.bib19 \"\"); Moret et al., [2023](https://ar5iv.org/html/2305.19303#bib.bib38 \"\")). These models offer a promising avenue for efficiently navigating the vast chemical space and generating unique molecules with specific properties (Zhou et al., [2019](https://ar5iv.org/html/2305.19303#bib.bib54 \"\"); Hoffman et al., [2022](https://ar5iv.org/html/2305.19303#bib.bib20 \"\")).\nA key ingredient contributing to the success of these models is their ability to encode molecules in a meaningful way, often employing graph neural networks (GNNs) to capture the structural intricacies (Gilmer et al., [2017](https://ar5iv.org/html/2305.19303#bib.bib15 \"\"); Shi et al., [2021](https://ar5iv.org/html/2305.19303#bib.bib44 \"\"); Mercado et al., [2021](https://ar5iv.org/html/2305.19303#bib.bib37 \"\")).\nMoreover, the inclusion of molecular fragments, known as motifs, significantly influences the generation process by enabling the model to explicitly encode complex structures such as cycles (Sommer et al., [2023](https://ar5iv.org/html/2305.19303#bib.bib47 \"\")). This contrasts with the gradual formation of ring-like structures from individual atoms, forming chains until both ends unite.\n\nIn the context of fragment-based models, researchers have adopted various techniques to construct fragment vocabularies, which can be categorised into chemically inspired and data-driven approaches. For example, both JT-VAE (Jin et al., [2018](https://ar5iv.org/html/2305.19303#bib.bib22 \"\")) and MoLeR (Maziarz et al., [2022](https://ar5iv.org/html/2305.19303#bib.bib35 \"\")) adhere to a heuristic strategy that dissects molecules into predefined structures, primarily consisting of ring systems and acyclic linkers. However, the diverse appearances of molecular structures result in various challenges concerning the vocabulary. While the large fragments in JT-VAE do not generalise well to larger datasets, the number of fragments becomes an issue for MoLeR. Such challenges are not unique to heuristic fragmentation methods but also extend to data-driven approaches like PS-VAE (Kong et al., [2022](https://ar5iv.org/html/2305.19303#bib.bib27 \"\")) and MiCaM (Geng et al., [2022](https://ar5iv.org/html/2305.19303#bib.bib14 \"\")). These approaches can set the number of chosen fragments but often resort to representing cyclic structures by combinations of chains. MiCaM, in particular, takes an approach that additionally incorporates attachment points for each fragment, resulting in a vocabulary that is “connection-aware”, increasing its size by a significant margin.\nThis leads to a situation where the included fragments often fall short to comprehensively represent the full spectrum of molecules present in the datasets (Sommer et al., [2023](https://ar5iv.org/html/2305.19303#bib.bib47 \"\")). Consequently, a generative model must refer to individual atoms in order to generate uncommon structures, a demanding task as the infrequent structures are often also more complex.\n\nOur work addresses this issue by abstracting fragments to shapes, representing only the binary adjacencies, and using this abstraction for vocabulary creation. Since the same shape can lead to multiple distinct atom and bond representations, this effectively reduces the required vocabulary size to capture a dataset’s molecules, while still encoding any hard-to-learn structural elements. Simultaneously, we propose an effective generation procedure in the form of our MAGNet model, which learns to generate molecules from abstract shape sets. The shape abstraction enables us sample the _entire_ molecule context at each stage and construct the molecular graph in a hierarchical fashion. This hierarchy progresses from shapes and their connectivity to the atom level, where shape representations are generated, ultimately leading to the full definition of the molecule. Notably, our model is the first to freely learn the distribution over shape representations, enabling it to sample a greater variety of atom and bond attributes compared to fragment-based approaches.\n\nWhile we identify limitations in some of the benchmarks\nfor _effectively_ evaluating whether complex structures have been captured, we provide alternative analyses to offer a more comprehensive understanding of the generative behaviour of our and other approaches.\nOverall, our results highlight MAGNet’s ability to reliably reconstruct uncommon shapes, including large cycles, surpassing other methods that face challenges in this area.\nAdditionally, MAGNet excels in sampling a wider range of shape representations, closely aligning with the original data distribution.\nWe also demonstrate MAGNet’s advantageous properties, including its fidelity to the presented latent code—a departure from existing methods.\nFinally, our model enables simultaneous conditioning on multiple scaffolds, underscoring its versatility for diverse applications in molecular generation.\n\n![Refer to caption](https://ar5iv.org/html/2305.19303/assets/assets/hero_figure.png)Figure 1: Current methods use motifs to compose new molecules. MAGNet advances this perspective and abstracts molecular subgraphs to untyped shapes. Being agnostic to atom and bond features in the beginning of the generation process, MAGNet generates molecules with great structural variety.\n\n## 2 Modelling molecules from shapes\n\nWe will first detail the factorisation of the data distribution of molecular graphs, denoted as ℙ​(𝒢)ℙ𝒢\\\\mathbb{P}(\\\\mathcal{G}). Following this, we will introduce our novel approach to fragmenting molecules into shapes and present the corresponding MAGNet model.\n\n#### Factorising the data distribution ℙ​(𝒢)ℙ𝒢\\\\mathbb{P}(\\\\mathcal{G})\n\nA molecular graph 𝒢𝒢\\\\mathcal{G} is defined by its structure together with its node and edge features, describing atoms and bonds, respectively. In this work, we consider a factorisation of ℙ​(𝒢)ℙ𝒢\\\\mathbb{P}(\\\\mathcal{G}) that builds the molecular graph 𝒢𝒢\\\\mathcal{G} from its shape representation, i.e.\n\n|     |     |     |     |\n| --- | --- | --- | --- |\n|  | ℙ​(𝒢)ℙ𝒢\\\\displaystyle\\\\mathbb{P}(\\\\mathcal{G}) | =ℙ​(𝒢∣𝒢𝒮)​ℙ​(𝒢𝒮),absentℙconditional𝒢subscript𝒢𝒮ℙsubscript𝒢𝒮\\\\displaystyle=\\\\mathbb{P}(\\\\mathcal{G}\\\\mid\\\\mathcal{G}\\_{\\\\mathcal{S}})\\\\,\\\\mathbb{P}(\\\\mathcal{G}\\_{\\\\mathcal{S}})\\\\>, |  |\n\nwhere 𝒢𝒢\\\\mathcal{G} refers to the normal molecular graph and 𝒢𝒮subscript𝒢𝒮\\\\mathcal{G}\\_{\\\\mathcal{S}} to its coarser shape graph.\nTo factorise ℙ​(𝒢𝒮)ℙsubscript𝒢𝒮\\\\mathbb{P}(\\\\mathcal{G}\\_{\\\\mathcal{S}}) further, we consider a fragmentation into a multiset of shapes 𝒮𝒮\\\\mathcal{S} and their typed connectivity A∈{0,C,N,…}\\|𝒮\\|×\\|𝒮\\|𝐴superscript0CN…𝒮𝒮A\\\\in\\\\{0,\\\\text{C},\\\\text{N},\\\\dots\\\\}^{\\\\lvert\\\\mathcal{S}\\\\rvert\\\\times\\\\lvert\\\\mathcal{S}\\\\rvert}. Each shape S∈𝒮𝑆𝒮S\\\\in\\\\mathcal{S} can be classified as one of three categories, namely\n\n(i)rings,\n(ii)junctions, and\n(iii)chains.\n\nA shape S𝑆S only holds _structural information_ about its s=\\|S\\|𝑠𝑆s=\\\\lvert S\\\\rvert nodes, meaning we can represent it as a binary matrix, i.e. S∈{0,1}s×s𝑆superscript01𝑠𝑠S\\\\in\\\\{0,1\\\\}^{s\\\\times s}. The shape connectivity A𝐴A, on the other hand, is typed and encodes whether two shapes share an atom, signified by A≠0𝐴0A\\\\neq 0, and also the respective atom type of the join, e.g. C or N. Note that A𝐴A is a shape-level representations which does not hold any information about the exact position of the connection between shapes. Further, since all cyclic structures within the molecular graph are considered individual shapes, A𝐴A always describes a tree on the shape-level.\n\nMoving forward to the atom-level representation, a shape S𝑆S can be equipped with node and edges features, corresponding to atom and bond types, respectively. We consider this representation of S𝑆S to constitute a typed subgraph M𝑀M, or fragment, of the input graph 𝒢𝒢\\\\mathcal{G}, and the associated multiset within the molecule ℳℳ\\\\mathcal{M}. We note that a shape S𝑆S can map to multiple distinct M𝑀M as only the binary adjacencies will be shared between them; we will later on make use of context knowledge to select a suitable M𝑀M.\n\nThe shape representations ℳℳ\\\\mathcal{M} and the shape connectivity A𝐴A do not fully describe 𝒢𝒢\\\\mathcal{G} yet as they do not specify the exact atomic positions where the shapes have to be joined. For this, we define the join set 𝒥𝒥\\\\mathcal{J} which can be understood as the set of join nodes j𝑗j that are contained in two motifs: 𝒥={j∣j∈Mk,j∈Ml,Ak​l≠0,Sk,Sl∈𝒮}𝒥conditional-set𝑗formulae-sequence𝑗subscript𝑀𝑘formulae-sequence𝑗subscript𝑀𝑙formulae-sequencesubscript𝐴𝑘𝑙0subscript𝑆𝑘subscript𝑆𝑙𝒮\\\\mathcal{J}=\\\\{j\\\\mid j\\\\in M\\_{k},\\ j\\\\in M\\_{l},\\ A\\_{kl}\\\\neq 0,\\ S\\_{k},S\\_{l}\\\\in\\\\mathcal{S}\\\\}. Finally, the full molecule is defined by attaching leaf atoms ℒℒ\\\\mathcal{L}, which are those atoms with degree di=1subscript𝑑𝑖1d\\_{i}=1 and with neighbour j∈𝒩i𝑗subscript𝒩𝑖j\\\\in\\\\mathcal{N}\\_{i} with dj=3subscript𝑑𝑗3d\\_{j}=3.\n\nIn conclusion, ℙ​(𝒢)ℙ𝒢\\\\mathbb{P}(\\\\mathcal{G}) is factorised into the shape representations ℳℳ\\\\mathcal{M}, the join set 𝒥𝒥\\\\mathcal{J}, and the leaf set ℒℒ\\\\mathcal{L}:\n\n|     |     |     |     |\n| --- | --- | --- | --- |\n|  | ℙ​(𝒢)ℙ𝒢\\\\displaystyle\\\\mathbb{P}(\\\\mathcal{G}) | =ℙ​(ℒ,𝒥,ℳ)absentℙℒ𝒥ℳ\\\\displaystyle=\\\\mathbb{P}(\\\\mathcal{L},\\\\mathcal{J},\\\\mathcal{M}) |  |\n|  |  | =ℙ​(ℒ∣ℳ,𝒥)​ℙ​(𝒥∣ℳ,A)​ℙ​(ℳ∣𝒢𝒮)​ℙ​(𝒢𝒮),absentℙconditionalℒℳ𝒥ℙconditional𝒥ℳ𝐴ℙconditionalℳsubscript𝒢𝒮ℙsubscript𝒢𝒮\\\\displaystyle=\\\\mathbb{P}(\\\\mathcal{L}\\\\mid\\\\mathcal{M},\\\\mathcal{J})\\\\mathbb{P}(\\\\mathcal{J}\\\\mid\\\\mathcal{M},A)\\\\,\\\\mathbb{P}(\\\\mathcal{M}\\\\mid\\\\mathcal{G}\\_{\\\\mathcal{S}})\\\\,\\\\mathbb{P}(\\\\mathcal{G}\\_{\\\\mathcal{S}})\\\\>, |  |\n\nwhere we use 𝒢𝒮subscript𝒢𝒮\\\\mathcal{G}\\_{\\\\mathcal{S}} to factorise the distribution. Note that 𝒥𝒥\\\\mathcal{J} is _conditionally independent_ of 𝒮𝒮\\\\mathcal{S} given the motifs ℳℳ\\\\mathcal{M}. The same applies to ℒℒ\\\\mathcal{L} being conditionally independent of A𝐴A given 𝒥𝒥\\\\mathcal{J}.\n\nDuring learning, we start with the coarser shape-level, that is 𝒮𝒮\\\\mathcal{S} and A𝐴A, and then proceed to the atom level for ℳℳ\\\\mathcal{M} and 𝒥𝒥\\\\mathcal{J}. Finally, we learn the distribution of leaves ℒℒ\\\\mathcal{L}. Note that unlike sequential generation methods, this factorisation considers the entire molecule context at all times with only the level of detail increasing.\n\n### 2.1 Fragmentation into shapes\n\n![Refer to caption](https://ar5iv.org/html/2305.19303/assets/assets/generation.png)Figure 2: On the shape-level, MAGNet predicts the shape multiset 𝒮𝒮\\\\mathcal{S} and its connectivity A𝐴A. Progressing to the atom-level, 𝒢𝒮subscript𝒢𝒮\\\\mathcal{G}\\_{\\\\mathcal{S}} informs the generation of shape representations ℳℳ\\\\mathcal{M}. To fully define the molecular graph 𝒢𝒢\\\\mathcal{G}, the joining positions 𝒥𝒥\\\\mathcal{J} and the leaf atoms ℒℒ\\\\mathcal{L} are predicted.\n\nMAGNet’s fragmentation scheme aims to break down a given molecule into clear structural elements. Initially, we remove all leaf atoms ℒℒ\\\\mathcal{L} across the graph, following the approach outlined in previous works (Jin et al., [2020](https://ar5iv.org/html/2305.19303#bib.bib23 \"\"); Maziarz et al., [2022](https://ar5iv.org/html/2305.19303#bib.bib35 \"\")). Leaves are those nodes that have degree di=1subscript𝑑𝑖1d\\_{i}=1 and whose neighbouring node j∈𝒩i𝑗subscript𝒩𝑖j\\\\in\\\\mathcal{N}\\_{i} fulfills d𝒩i=3subscript𝑑subscript𝒩𝑖3d\\_{\\\\mathcal{N}\\_{i}}=3. This step helps to divide the molecule 𝒢𝒢\\\\mathcal{G} into cyclic and acyclic parts. Importantly, instead of modelling the connection between two fragments Misubscript𝑀𝑖M\\_{i} and Mjsubscript𝑀𝑗M\\_{j} with a connecting bond, we represent it by a shared atom, referred to as the join atom ν∈𝒥𝜈𝒥\\\\nu\\\\in\\\\mathcal{J}. One benefit of this approach is that fragments are not truncated and, for example, two cycles which are connected by only one join atom are identified as two cycles instead of a single cycle that is connected to a chain at both ends.\n\nMoreover, in order to reduce the number of required shapes as much as possible, we further decompose the resulting acyclic fragments. To this end, we introduce “junctions” which are defined by a center node with degree three or four present in an acyclic structure. The junction then contains the center nodes as well as its neighbours. This additional refinement reduces the number of fragments by a factor of three, allowing to classify them into rings, junctions, and chains. On the ZINC dataset (Irwin et al., [2020](https://ar5iv.org/html/2305.19303#bib.bib21 \"\")), consisting of 249,456 compounds, our fragmentation results in 7371 typed subgraphs. When compared to the decomposition BBB procedure (Jin et al., [2020](https://ar5iv.org/html/2305.19303#bib.bib23 \"\"); Maziarz et al., [2022](https://ar5iv.org/html/2305.19303#bib.bib35 \"\")), our approach reduces complexity by collapsing acyclic structures into distinct shapes, leading to a reduction in vocabulary size by more than a half. Additionally, in contrast to data-driven methods like those outlined in Kong et al. ( [2022](https://ar5iv.org/html/2305.19303#bib.bib27 \"\")) and Geng et al. ( [2022](https://ar5iv.org/html/2305.19303#bib.bib14 \"\")), our decomposition method maintains structural integrity through a top-down approach.\n\nAbstracting these typed subgraphs further to shapes ultimately results in 347 distinct shapes, where—in the best case—up to almost 800 fragments are consolidated into a single shape token. While the generative model is required to map a single shape to all its various representations, this fragmentation also enables us to model smoother transitions between shape representations. For instance, consider the molecules “C1NNCC1” and “C1NCNC1”, which only differ in the relative positioning among atoms. Using shapes, the model can account for this difference without selecting potentially dissimilar tokens from a large vocabulary. We discuss the potential of our approach for transferability across datasets in [Section4.4](https://ar5iv.org/html/2305.19303#S4.SS4 \"4.4 Application across datasets and conditional sampling ‣ 4 Experiments ‣ MAGNet: Motif-Agnostic Generation of Molecules from Shapes\") and [AppendixC](https://ar5iv.org/html/2305.19303#A3 \"Appendix C Transferability of Shapes ‣ MAGNet: Motif-Agnostic Generation of Molecules from Shapes\").\n\n### 2.2 MAGNet’s generation process\n\nMAGNet is designed to represent the hierarchy of the factorisation into shape- and atom-level from [Section2](https://ar5iv.org/html/2305.19303#S2.SS0.SSS0.Px1 \"Factorising the data distribution ℙ⁢(𝒢) ‣ 2 Modelling molecules from shapes ‣ MAGNet: Motif-Agnostic Generation of Molecules from Shapes\"), cf. Fig. ​ [2](https://ar5iv.org/html/2305.19303#S2.F2 \"Figure 2 ‣ 2.1 Fragmentation into shapes ‣ 2 Modelling molecules from shapes ‣ MAGNet: Motif-Agnostic Generation of Molecules from Shapes\"). The model is trained as a VAE model (Kingma et al., [2015](https://ar5iv.org/html/2305.19303#bib.bib26 \"\")), where the latent vectors z𝑧z are trained to encode meaningful semantics about the input data. That is, given a vector z𝑧z from the latent space, MAGNet’s generation process first works on the shape level to predict 𝒢𝒮subscript𝒢𝒮\\\\mathcal{G}\\_{\\\\mathcal{S}}, defined by the multiset 𝒮𝒮\\\\mathcal{S} its connectivity A𝐴A, before going to the atom level which is defined by the fragments ℳℳ\\\\mathcal{M}, joins 𝒥𝒥\\\\mathcal{J}, and leaves ℒℒ\\\\mathcal{L}.\n\n#### Shape-Level\n\nOn the shape-level, MAGNet first generates the shape multiset 𝒮𝒮\\\\mathcal{S}—the same shape can occur multiple times in one molecule—from the latent representation z𝑧z. More specifically, we learn ℙ​(𝒮∣z)ℙconditional𝒮𝑧\\\\mathbb{P}(\\\\mathcal{S}\\\\mid z) by conditioning the generation on the latent code z𝑧z and the intermediate representation of the shapes by a transformer model. On the sorted shape set, the network is optimised via Cross-Entropy (CE) loss, denoted by L𝒮subscript𝐿𝒮L\\_{\\\\mathcal{S}}.\n\nGiven the shape multiset 𝒮𝒮\\\\mathcal{S}, MAGNet infers the shape connectivity A𝐴A between shapes Si,Sj∈𝒮subscript𝑆𝑖subscript𝑆𝑗𝒮S\\_{i},S\\_{j}\\\\in\\\\mathcal{S}. Formally, we learn ℙ​(A∣𝒮,z)=∏i,j=1nℙ​(Ai​j=t∣S,z)ℙconditional𝐴𝒮𝑧superscriptsubscriptproduct𝑖𝑗1𝑛ℙsubscript𝐴𝑖𝑗conditional𝑡𝑆𝑧\\\\mathbb{P}(A\\\\mid\\\\mathcal{S},z)=\\\\prod\\_{i,j=1}^{n}\\\\mathbb{P}(A\\_{ij}=t\\\\mid S,z) where t∈{0,C,N,…}𝑡0CN…t\\\\in\\\\{0,\\\\text{C},\\\\text{N},\\\\dots\\\\} not only encodes the existence (or absence) of a shape connection but also its atom type.\nFurther, we assume the individual connections, Ai​jsubscript𝐴𝑖𝑗A\\_{ij} and Al​ksubscript𝐴𝑙𝑘A\\_{lk}, to be independent given the shape multiset 𝒮𝒮\\\\mathcal{S} and the latent representation z𝑧z. MAGNet implements this connectivity module using an MLP, optimised with CE loss LAsubscript𝐿𝐴L\\_{A}. We compute the loss on the shape level as L𝒢𝒮=L𝒮+LAsubscript𝐿subscript𝒢𝒮subscript𝐿𝒮subscript𝐿𝐴L\\_{\\\\mathcal{G}\\_{\\\\mathcal{S}}}=L\\_{\\\\mathcal{S}}+L\\_{A}. It is worth noting that the same shape can have different atom representations depending on its positions in the molecular graph, highlighting the importance of predicting A𝐴A for generating atom-level shape representations.\n\n#### Atom-Level\n\nLeveraging the shape set 𝒮𝒮\\\\mathcal{S} and connectivity A𝐴A, which together define a molecule’s shape-level representation, MAGNet transitions to the atom-level by discerning appropriate node and edge attributes for each shape, referred to as atom and bond types ℳℳ\\\\mathcal{M}. This step is pivotal in MAGNet’s generation process, granting it independence from a pre-established fragment set and thus enhancing its flexibility.\nTo model the shape representation ℙ​(Mi∣𝒮,A,z)ℙconditionalsubscript𝑀𝑖𝒮𝐴𝑧\\\\mathbb{P}(M\\_{i}\\\\mid\\\\mathcal{S},A,z) of shape Sisubscript𝑆𝑖S\\_{i}, the atoms are generated using a transformer model that constructs its memory by encoding the shape graph and incorporating embeddings tailored to each individual shape (Shi et al., [2021](https://ar5iv.org/html/2305.19303#bib.bib44 \"\")). Unlike the shape set, the sizes of the shapes are fixed, enabling a structured representation of each position within the shape.\n\nSubsequently, the resulting atom embeddings are leveraged to determine the corresponding bond types Mbsuperscript𝑀𝑏M^{b} between connected nodes. This bond determination is achieved through the utilisation of an MLP, which effectively captures the necessary relationships for assigning correct bond types.\nNote that conditioning on A𝐴A ensures that Mksubscript𝑀𝑘M\\_{k} includes all atoms required for connectivity also on the atom-level, i.e. the atom allocations for M𝑀M have to respect all join types defined by the shape connectivity A𝐴A: Ak​l∈⋃jMka∩Mlasubscript𝐴𝑘𝑙subscript𝑗subscriptsuperscript𝑀𝑎𝑘subscriptsuperscript𝑀𝑎𝑙A\\_{kl}\\\\in\\\\bigcup\\_{j}M^{a}\\_{k}\\\\cap M^{a}\\_{l}, where a𝑎a signifies exclusive consideration of atoms. We optimise both atoms and bonds with a CE loss and denote the combined loss by Lℳsubscript𝐿ℳL\\_{\\\\mathcal{M}}.\n\nNext, to establish connectivity on the atom level within the molecular graph, MAGNet proceeds to identify the join nodes 𝒥𝒥\\\\mathcal{J}. The join nodes’ types are already determined by the connectivity A𝐴A. MAGNet accomplishes this by predicting the specific atom positions pasubscript𝑝𝑎p\\_{a} that need to be combined, collectively forming the join set 𝒥𝒥\\\\mathcal{J}. The likelihood of merging nodes i𝑖i and j𝑗j in shape representations Mksubscript𝑀𝑘M\\_{k} and Mlsubscript𝑀𝑙M\\_{l} is represented by the merge probability Ji​j(k,l)=ℙ​(pi≡pj∣ℳ,A,z)superscriptsubscript𝐽𝑖𝑗𝑘𝑙ℙsubscript𝑝𝑖conditionalsubscript𝑝𝑗ℳ𝐴𝑧J\\_{ij}^{(k,l)}=\\\\mathbb{P}(p\\_{i}\\\\equiv p\\_{j}\\\\mid\\\\mathcal{M},A,z), which constitutes the join matrix J(k,l)∈\\[0,1\\]VSk×VSlsuperscript𝐽𝑘𝑙superscript01subscript𝑉subscript𝑆𝑘subscript𝑉subscript𝑆𝑙J^{(k,l)}\\\\in\\\\leavevmode\\\\nobreak\\ \\[0,1\\]^{V\\_{S\\_{k}}\\\\times V\\_{S\\_{l}}}. It is modelled and optimised using an MLP and CE loss L𝒥subscript𝐿𝒥L\\_{\\\\mathcal{J}}.\n\nFinally, predicting the leaves ℒℒ\\\\mathcal{L} involves two key aspects: determining the correct atom type for each leaf and establishing its connection to the molecule’s atom representation, denoted as 𝒞𝒞\\\\mathcal{C} for core molecule. To learn ℙ​(ℒS∣𝒞,z)ℙconditionalsubscriptℒ𝑆𝒞𝑧\\\\mathbb{P}(\\\\mathcal{L}\\_{S}\\\\mid\\\\mathcal{C},z), we assess each node position within the shape representation MSsubscript𝑀𝑆M\\_{S}. Similar to the approach employed in modelling the shape representation P​(Mi\\|S,A,z)𝑃conditionalsubscript𝑀𝑖𝑆𝐴𝑧P(M\\_{i}\\|S,A,z) for shape Sisubscript𝑆𝑖S\\_{i}, MAGNet utilises a transformer model to generate atom representations, optimised with CE loss Lℒsubscript𝐿ℒL\\_{\\\\mathcal{L}}. This model constructs its memory by encoding the present atom graph and incorporating embeddings tailored to each unique shape representation. The final atom loss is defined by L𝒢=Lℳ+L𝒥+Lℒsubscript𝐿𝒢subscript𝐿ℳsubscript𝐿𝒥subscript𝐿ℒL\\_{\\\\mathcal{G}}=L\\_{\\\\mathcal{M}}+L\\_{\\\\mathcal{J}}+L\\_{\\\\mathcal{L}}.\n\n### 2.3 The MAGNet encoder\n\nMAGNet’s encoder aims to learn the approximate posterior ℚ​(z∣𝒢)ℚconditional𝑧𝒢\\\\mathbb{Q}(z\\\\mid\\\\mathcal{G}). At its core, the encoder leverages a graph transformer Shi et al. ( [2021](https://ar5iv.org/html/2305.19303#bib.bib44 \"\")) for generating node embeddings of the molecular graph. Since MAGNet generates molecules in a coarse to fine-grained fashion, it is beneficial to encode information about the decomposition of the molecules. To achieve this, we use an additional GNN to capture the coarse connectivity within the shape graph. The embeddings of the molecular and the shape graph are computed by aggregating over the individual atom and shape nodes, respectively. In addition to these aggregations, we exclusively aggregate joins and leaves to represent the other essential components of the graph. The representation of the individual components—molecular graph, shapes, joins, and leaves—are concatenated and mapped to the latent space by an MLP, constituting the graph embedding z𝒢subscript𝑧𝒢z\\_{\\\\mathcal{G}}. More details about the chosen node features as well as technical specifications of the encoder can be found in [AppendixD](https://ar5iv.org/html/2305.19303#A4 \"Appendix D Details Encoder ‣ MAGNet: Motif-Agnostic Generation of Molecules from Shapes\").\n\nTaken together, we optimise MAGNet according to the VAE setting, maximising the ELBO:\n\n|     |     |     |     |\n| --- | --- | --- | --- |\n|  | L𝐿\\\\displaystyle L | =𝔼z∼ℚ​\\[ℙ​(𝒢∣z)\\]+β​DKL​(ℚ​(z∣𝒢)∣P)withP∼𝒩​(0,𝟙)formulae-sequenceabsentsubscript𝔼similar-to𝑧ℚdelimited-\\[\\]ℙconditional𝒢𝑧𝛽subscript𝐷KLconditionalℚconditional𝑧𝒢𝑃withsimilar-to𝑃𝒩01\\\\displaystyle=\\\\mathbb{E}\\_{z\\\\sim\\\\mathbb{Q}}\\\\bigl{\\[}\\\\mathbb{P}\\\\bigl{(}\\\\mathcal{G}\\\\mid z\\\\bigr{)}\\\\bigr{\\]}+\\\\beta D\\_{\\\\text{KL}}\\\\bigl{(}\\\\mathbb{Q}(z\\\\mid\\\\mathcal{G})\\\\mid P\\\\bigr{)}\\\\qquad\\\\text{with}\\\\quad P\\\\sim\\\\mathcal{N}(0,\\\\mathds{1}) |  |\n|  |  | =L𝒢𝒮+L𝒢+β​DKL,absentsubscript𝐿subscript𝒢𝒮subscript𝐿𝒢𝛽subscript𝐷KL\\\\displaystyle=L\\_{\\\\mathcal{G}\\_{\\\\mathcal{S}}}+L\\_{\\\\mathcal{G}}+\\\\beta D\\_{\\\\text{KL}}\\\\>, |  |\n\nwhere the KL-divergence DKLsubscript𝐷KLD\\_{\\\\text{KL}} serves to regularise the posterior ℚ​(z∣𝒢)ℚconditional𝑧𝒢\\\\mathbb{Q}(z\\\\mid\\\\mathcal{G}) towards similarity with the Normal prior P𝑃P in the latent space, weighted by β𝛽\\\\beta. However, we have observed that this regularisation alone is inadequate for achieving a smoothly structured latent space. To address this, we apply a Normalizing Flow to the latent space, aligning it more effectively with the prior (Tong et al., [2023](https://ar5iv.org/html/2305.19303#bib.bib49 \"\")).\n\n## 3 Related Work\n\n#### Molecule generation\n\nExisting generative models can be broadly divided into two categories: (1) string-based models, relying on string representations like SMILES or SELFIES (Gómez-Bombarelli et al., [2018](https://ar5iv.org/html/2305.19303#bib.bib18 \"\"); Segler et al., [2018](https://ar5iv.org/html/2305.19303#bib.bib42 \"\"); Flam-Shepherd et al., [2022](https://ar5iv.org/html/2305.19303#bib.bib13 \"\"); Fang et al., [2023](https://ar5iv.org/html/2305.19303#bib.bib11 \"\"); Adilov, [2021](https://ar5iv.org/html/2305.19303#bib.bib1 \"\"); Grisoni, [2023](https://ar5iv.org/html/2305.19303#bib.bib17 \"\")), which do not leverage structural information, and (2) graph-based models, which are inherently centered around molecular graphs.\nGraph-based approaches involve models that represent molecular graphs (1) primarily at the atom level and (2) predominantly through fragments. Regarding the generation process, they can be further divided into sequential methods (Khemchandani et al., [2020](https://ar5iv.org/html/2305.19303#bib.bib25 \"\"); Shi et al., [2020](https://ar5iv.org/html/2305.19303#bib.bib43 \"\"); Popova et al., [2019](https://ar5iv.org/html/2305.19303#bib.bib40 \"\"); Mercado et al., [2021](https://ar5iv.org/html/2305.19303#bib.bib37 \"\"); Luo et al., [2021](https://ar5iv.org/html/2305.19303#bib.bib33 \"\"); Liu et al., [2018](https://ar5iv.org/html/2305.19303#bib.bib32 \"\"); Li et al., [2018](https://ar5iv.org/html/2305.19303#bib.bib29 \"\"); Assouel et al., [2018](https://ar5iv.org/html/2305.19303#bib.bib3 \"\"); You et al., [2019](https://ar5iv.org/html/2305.19303#bib.bib52 \"\"); Yang et al., [2021](https://ar5iv.org/html/2305.19303#bib.bib51 \"\"); Lim et al., [2020](https://ar5iv.org/html/2305.19303#bib.bib30 \"\"); Kajino, [2019](https://ar5iv.org/html/2305.19303#bib.bib24 \"\"); Jin et al., [2020](https://ar5iv.org/html/2305.19303#bib.bib23 \"\"); Bengio et al., [2021](https://ar5iv.org/html/2305.19303#bib.bib4 \"\"); Ahn et al., [2021](https://ar5iv.org/html/2305.19303#bib.bib2 \"\"); Shirzad et al., [2022](https://ar5iv.org/html/2305.19303#bib.bib45 \"\")), building molecules per fragment while conditioning on a partial molecule, and all-at-once (AAO) approaches (Simonovsky & Komodakis, [2018](https://ar5iv.org/html/2305.19303#bib.bib46 \"\"); Ma et al., [2018](https://ar5iv.org/html/2305.19303#bib.bib34 \"\"); Liu et al., [2021](https://ar5iv.org/html/2305.19303#bib.bib31 \"\"); De Cao & Kipf, [2018](https://ar5iv.org/html/2305.19303#bib.bib10 \"\"); Zang & Wang, [2020](https://ar5iv.org/html/2305.19303#bib.bib53 \"\"); Bresson & Laurent, [2019](https://ar5iv.org/html/2305.19303#bib.bib6 \"\"); Flam-Shepherd et al., [2020](https://ar5iv.org/html/2305.19303#bib.bib12 \"\"); Samanta et al., [2019](https://ar5iv.org/html/2305.19303#bib.bib41 \"\"); Kong et al., [2022](https://ar5iv.org/html/2305.19303#bib.bib27 \"\")) that create each aspect of the molecular graph in a single step.\n\n#### Fragmentation and shape representation\n\nVarious techniques are available for constructing fragment vocabularies, with a distinction between chemically-inspired and data-driven approaches. For example, both HierVAE (Jin et al., [2020](https://ar5iv.org/html/2305.19303#bib.bib23 \"\")) and MoLeR (Maziarz et al., [2022](https://ar5iv.org/html/2305.19303#bib.bib35 \"\")) adopt a heuristic strategy known as “breaking bridge bonds” to decompose molecules into rings and remainder fragments, emphasising chemically valid substructures. In a similar vein, JT-VAE (Jin et al., [2018](https://ar5iv.org/html/2305.19303#bib.bib22 \"\")) employs fragmentation guided by the construction of junction trees. In contrast, PS-VAE (Kong et al., [2022](https://ar5iv.org/html/2305.19303#bib.bib27 \"\")) and MiCaM (Geng et al., [2022](https://ar5iv.org/html/2305.19303#bib.bib14 \"\")) take a data-driven bottom-up approach, creating fragments by merging smaller components, starting from single atoms. MiCaM even integrates attachment points, resulting in a larger, “connection-aware” vocabulary.\n\nMAGNet is a graph-based model that employs a unique approach by generating each hierarchy level in a single step, similar to existing AAO approaches. It positions itself between the traditional categories of single-atom and fragment-based models by utilising shapes as building blocks and subsequently generating appropriate atom and bond attributes. Our new fragmentation approach is designed to achieve concise shape representations, expanding its capacity to encode diverse structures within the same vocabulary size.\n\n## 4 Experiments\n\nWe evaluate MAGNet’s performance across several dimensions of the generation process. First, we investigate the reconstruction and sampling of shapes 𝒮𝒮\\\\mathcal{S}, as the fundamental component of MAGNet’s factorisation, and assess how faithfully our model represents the diverse structural characteristics found in molecules. We continue to evaluate the generative performance using established benchmarks. Next, we analyse MAGNet’s ability to determine suitable atom and bond allocations ℳℳ\\\\mathcal{M}, highlighting its distinctive approach compared to baseline models. Moreover, we demonstrate how MAGNet’s factorisation and shape vocabulary facilitate its ability to generalise effectively across different datasets in a zero-shot manner. Finally, we explore the possibilities enabled by our factorisation, such as conditioning on various levels of the generation process.\n\n![Refer to caption](https://ar5iv.org/html/2305.19303/assets/assets/shapes.png)Figure 3: (a) Reconstruction of molecules that include large cycles or complex junctions. Relying on individual atoms to build these structures is not sufficient. Only MAGNet is able to reliably decode its latent code z𝒢subscript𝑧𝒢z\\_{\\\\mathcal{G}}. (b) Percentage of reconstructed shapes. MAGNet substantially improves in reconstructing both common and—more importantly—uncommon shapes. (c) Comparison of sampled shapes to shape occurrences in the training distribution. A ratio of 111 is optimal.\n\n### 4.1 Using shapes to represent structural variety of molecules\n\n#### Reconstructing large cycles\n\nOur first experiment provides qualitative insights into how accurately shapes are decoded, ℙ​(𝒮\\|z𝒢)ℙconditional𝒮subscript𝑧𝒢\\\\mathbb{P}(\\\\mathcal{S}\\\\,\\|\\\\,z\\_{\\\\mathcal{G}}). For this experiment, we employ two baselines: PS-VAE (Kong et al., [2022](https://ar5iv.org/html/2305.19303#bib.bib27 \"\")) and MoLeR (Maziarz et al., [2022](https://ar5iv.org/html/2305.19303#bib.bib35 \"\")), the models with the best performance within their respective category on the GuacaMol Benchmark (see Sec. [4.2](https://ar5iv.org/html/2305.19303#S4.SS2 \"4.2 Generative performance evaluated on common benchmarks ‣ 4 Experiments ‣ MAGNet: Motif-Agnostic Generation of Molecules from Shapes\")).\nWe assess the decoder’s performance in reconstructing molecules from the test set, which includes uncommon shapes like large rings or complex junctions. Our observations reveal that the baseline models have difficulty in constructing complex shapes, as illustrated in Figure [3](https://ar5iv.org/html/2305.19303#S4.F3 \"Figure 3 ‣ 4 Experiments ‣ MAGNet: Motif-Agnostic Generation of Molecules from Shapes\") a. This limitation is likely attributed to the absence of such shapes in their top-k𝑘k vocabularies. Consequently, these models face the challenge of constructing shapes such as large rings from individual atoms. In contrast, our proposed model, MAGNet, operates with a moderately-sized shape vocabulary that includes complex shapes, enabling it to generate molecules that closely adhere to the latent code and the corresponding ground truth molecules. We quantify this result through the displacement of latent codes in [AppendixB](https://ar5iv.org/html/2305.19303#A2 \"Appendix B Displacement of Latent Codes ‣ MAGNet: Motif-Agnostic Generation of Molecules from Shapes\").\n\n#### MAGNet reliably decodes shapes\n\nBuilding on our analysis of large cycles and uncommon junctions, we extend our investigation to assess how effectively different models can reconstruct the shape set 𝒮𝒮\\\\mathcal{S} in a general context. Given our focus on ℙ​(𝒮\\|z)ℙconditional𝒮𝑧\\\\mathbb{P}(\\\\mathcal{S}\\\\,\\|\\\\,z), we can disregard the shape connectivity A𝐴A and representations ℳℳ\\\\mathcal{M}. As illustrated in [Fig.3](https://ar5iv.org/html/2305.19303#S4.F3 \"In 4 Experiments ‣ MAGNet: Motif-Agnostic Generation of Molecules from Shapes\") b, our findings demonstrate that MAGNet consistently outperforms both MoLeR and PS-VAE. Notably, our results provide additional support for the hypothesis that the other methods do not effectively learn the concept of a shape, relying primarily on the information encoded in their vocabulary. As a result, they may struggle to decode a common shape S𝑆S when the signal originally comes from an uncommon representation M𝑀M.\n\n#### MAGNet matches the distribution of shapes more accurately\n\nTo further check that uncommon shapes are also sampled, we analyse the shape set of generated molecules. If the other models are able to represent scaffolds that are not included in their vocabulary, they should be able to reflect the reference distribution of shapes. [Fig.3](https://ar5iv.org/html/2305.19303#S4.F3 \"In 4 Experiments ‣ MAGNet: Motif-Agnostic Generation of Molecules from Shapes\") a shows that this is _not_ the case in practice. For this evaluation, we decompose sampled molecules into their shapes. We then measure the models’ over- and undersampling behaviour based on the ratio rSisubscript𝑟subscript𝑆𝑖r\\_{S\\_{i}}:\n\n|     |     |     |\n| --- | --- | --- |\n|  | rSi=cs​(Si)∑kcs​(Sk)×∑kct​(Sk)ct​(Si),subscript𝑟subscript𝑆𝑖subscript𝑐𝑠subscript𝑆𝑖subscript𝑘subscript𝑐𝑠subscript𝑆𝑘subscript𝑘subscript𝑐𝑡subscript𝑆𝑘subscript𝑐𝑡subscript𝑆𝑖r\\_{S\\_{i}}=\\\\frac{c\\_{s}(S\\_{i})}{\\\\sum\\_{k}c\\_{s}(S\\_{k})}\\\\times\\\\frac{\\\\sum\\_{k}c\\_{t}(S\\_{k})}{c\\_{t}(S\\_{i})}\\\\>, |  |\n\nwhere ctsubscript𝑐𝑡c\\_{t} and cssubscript𝑐𝑠c\\_{s} refer to the count function applied to the training set and sampled sets, respectively. On common shapes, i.e. those that occur in more than 10% of the molecules, all evaluated models are able to match the ratio of the ZINC distribution. For uncommon shapes, however, both MoLeR and PS-VAE fail: while PS-VAE heavily oversamples both ring-like structures and chain-like structures, MoLeR oversamples chain-like structures and undersamples ring-like structures. MAGNet matches the reference distribution best across categories and we conclude that the proposed abstraction to shapes is also beneficial for generation.\n\n### 4.2 Generative performance evaluated on common benchmarks\n\n\\\\RawFloats\n\nTable 1: GuacaMol and MOSES Benchmark. We report mean and standard deviation using 5 random seeds and highlight the best overall graph-based method as well as the best within each category.\n\n|  |  | GuacaMol | MOSES |\n|  |  | FCD (↑)↑(\\\\uparrow) | KL (↑)↑(\\\\uparrow) | IntDiv (↑)↑(\\\\uparrow) | logP (↓)↓(\\\\downarrow) | SA (↓)↓(\\\\downarrow) | QED (↓)↓(\\\\downarrow) |\n| SM. | CharVAE | 0.17 ±plus-or-minus\\\\pm 0.08 | 0.78 ±plus-or-minus\\\\pm 0.04 | 0.88 ±plus-or-minus\\\\pm 0.01 | 0.87 ±plus-or-minus\\\\pm 0.14 | 0.48 ±plus-or-minus\\\\pm 0.13 | 0.06 ±plus-or-minus\\\\pm 0.03 |\n| SM.-LSTM | 0.93 ±plus-or-minus\\\\pm 0.00 | 1.00 ±plus-or-minus\\\\pm 0.00 | 0.87 ±plus-or-minus\\\\pm 0.00 | 0.12 ±plus-or-minus\\\\pm 0.01 | 0.04 ±plus-or-minus\\\\pm 0.02 | 0.00 ±plus-or-minus\\\\pm 0.00 |\n| Sequential | GraphAF | 0.05 ±plus-or-minus\\\\pm 0.00 | 0.67 ±plus-or-minus\\\\pm 0.01 | 0.93 ±plus-or-minus\\\\pm 0.00 | 0.41 ±plus-or-minus\\\\pm 0.02 | 0.88 ±plus-or-minus\\\\pm 0.10 | 0.22 ±plus-or-minus\\\\pm 0.01 |\n| HierVAE | 0.53 ±plus-or-minus\\\\pm 0.14 | 0.92 ±plus-or-minus\\\\pm 0.01 | 0.87 ±plus-or-minus\\\\pm 0.01 | 0.36 ±plus-or-minus\\\\pm 0.17 | 0.20 ±plus-or-minus\\\\pm 0.14 | 0.03 ±plus-or-minus\\\\pm 0.00 |\n| MiCaM | 0.63 ±plus-or-minus\\\\pm 0.02 | 0.94 ±plus-or-minus\\\\pm 0.00 | 0.87 ±plus-or-minus\\\\pm 0.00 | 0.20 ±plus-or-minus\\\\pm 0.05 | 0.51 ±plus-or-minus\\\\pm 0.03 | 0.08 ±plus-or-minus\\\\pm 0.00 |\n| JTVAE | 0.75 ±plus-or-minus\\\\pm 0.00 | 0.94 ±plus-or-minus\\\\pm 0.00 | 0.86 ±plus-or-minus\\\\pm 0.00 | 0.28 ±plus-or-minus\\\\pm 0.03 | 0.34 ±plus-or-minus\\\\pm 0.01 | 0.01 ±plus-or-minus\\\\pm 0.00 |\n| MoLeR | 0.80 ±plus-or-minus\\\\pm 0.01 | 0.98 ±plus-or-minus\\\\pm 0.00 | 0.87 ±plus-or-minus\\\\pm 0.00 | 0.13 ±plus-or-minus\\\\pm 0.02 | 0.06 ±plus-or-minus\\\\pm 0.01 | 0.01 ±plus-or-minus\\\\pm 0.01 |\n| AAO | PSVAE | 0.28 ±plus-or-minus\\\\pm 0.01 | 0.83 ±plus-or-minus\\\\pm 0.00 | 0.89 ±plus-or-minus\\\\pm 0.00 | 0.34 ±plus-or-minus\\\\pm 0.02 | 1.18 ±plus-or-minus\\\\pm 0.05 | 0.05 ±plus-or-minus\\\\pm 0.00 |\n| MAGNet | 0.76 ±plus-or-minus\\\\pm 0.00 | 0.95 ±plus-or-minus\\\\pm 0.00 | 0.88 ±plus-or-minus\\\\pm 0.00 | 0.22 ±plus-or-minus\\\\pm 0.01 | 0.12 ±plus-or-minus\\\\pm 0.01 | 0.01 ±plus-or-minus\\\\pm 0.00 |\n\nEmploying two standard benchmarks for de-novo molecule generation, we establish MAGNet’s competitive generative performance. The GuacaMol benchmark provides a framework for assessing the ability of a generative model to sample in accordance with the distribution of a molecular dataset (Brown et al., [2019](https://ar5iv.org/html/2305.19303#bib.bib7 \"\")). Next to evaluating the uniqueness and novelty of sampled molecules, the benchmark also computes distributional distances to the reference, i.e. the KL-divergence and Fréchet distance (FCD). We use the MOSES benchmark (Polykovskiy et al., [2020](https://ar5iv.org/html/2305.19303#bib.bib39 \"\")) to report measures for the internal diversity (IntDiv) of generated molecules as well as chemical properties such as synthetic accessability (SA), the octanol-water partition coefficient (logP), and the viability for drugs (QED).\n\nBaselines for these benchmarks additionally include JTVAE (Jin et al., [2018](https://ar5iv.org/html/2305.19303#bib.bib22 \"\")), HierVAE (Jin et al., [2020](https://ar5iv.org/html/2305.19303#bib.bib23 \"\")), and MiCaM (Geng et al., [2022](https://ar5iv.org/html/2305.19303#bib.bib14 \"\")) as sequential, fragment-based methods. For those model with a variable vocabulary, we set the size to 350. We also include GraphAF (Shi et al., [2020](https://ar5iv.org/html/2305.19303#bib.bib43 \"\")) as a purely atom-based model. While the focus of this work lies on graph-based molecule generation, we furthermore add the SMILES-based baseline of the GuacaMol benchmark SMILES-LSTM (SM-LSTM) (Segler et al., [2018](https://ar5iv.org/html/2305.19303#bib.bib42 \"\")) as well as the SMILES-based VAE CharVAE (Gómez-Bombarelli et al., [2018](https://ar5iv.org/html/2305.19303#bib.bib16 \"\")). Importantly, SM-LSTM does not have a latent space and can thus not perform targeted decoding. For all baselines, we use the hyperparameters specified in their respective works. We specify MAGNet’s hyperparameter configuration in [AppendixE](https://ar5iv.org/html/2305.19303#A5 \"Appendix E MAGNet: Hyperparameters and Training ‣ MAGNet: Motif-Agnostic Generation of Molecules from Shapes\").\n\n#### MAGNet is the best AAO model on standard benchmarks\n\nThe benchmark is conducted on 104superscript10410^{4} latent codes sampled from the prior distribution, z∼Psimilar-to𝑧𝑃z\\\\sim P, and decoded into valid molecules. Our results for both benchmarks on the ZINC dataset are depicted in [Table1](https://ar5iv.org/html/2305.19303#S4.T1 \"In 4.2 Generative performance evaluated on common benchmarks ‣ 4 Experiments ‣ MAGNet: Motif-Agnostic Generation of Molecules from Shapes\"). We do not report Novelty and Uniqueness, as almost all evaluated models achieve 100% on these metrics. Solely GraphAF and HierVAE achieve 91% and 96% Uniqueness and Novelty, respectively. For baselines like SM-LSTM and CharVAE, which are not able to achieve 100% Validity, we sample until we obtain 104superscript10410^{4} valid molecules. While MoLeR sets the state of the art on both FCD and KL, MAGNet overall performs competitively, outperforming all other graph-based baselines. This supports the proposed factorisation in [Section2](https://ar5iv.org/html/2305.19303#S2.SS0.SSS0.Px1 \"Factorising the data distribution ℙ⁢(𝒢) ‣ 2 Modelling molecules from shapes ‣ MAGNet: Motif-Agnostic Generation of Molecules from Shapes\") while also challenging the common perception that methods for molecule generation must rely on motif vocabularies to obtain good generative performance.\n\nMoreover, despite the FCD being one of the most important metrics for molecular distribution learning, we find that it fails to provide insights about the structural diversity of the molecules that are generated. Upon further investigation, we evaluate the benchmark on a subset of 104superscript10410^{4} molecules from the training data. The subset was filtered to include only the 10 most common shapes found in the dataset, resulting in an FCD score of 0.89. This observation offers an explanation for why models like MoLeR can achieve state-of-the-art FCD scores, despite not accurately capturing the distribution of uncommon shapes, as demonstrated in [Section4.1](https://ar5iv.org/html/2305.19303#S4.SS1 \"4.1 Using shapes to represent structural variety of molecules ‣ 4 Experiments ‣ MAGNet: Motif-Agnostic Generation of Molecules from Shapes\"). This underscores that our evaluation of the structural diversity of molecule is orthogonal to these benchmarks, providing valuable insights into the tails of the molecular distribution.\n\n![Refer to caption](https://ar5iv.org/html/2305.19303/assets/assets/fragment_plot.png)Figure 4: (a) Example of generated fragments by MAGNet and baseline methods. (b) MMD computation to quantify similarity between generated and ground truth shape representations. (c) Rank comparison between predicted fragments and their original counterparts.\n\n### 4.3 Generation of shape representations ℳℳ\\\\mathcal{M}\n\nHaving established MAGNet’s ability to utilise its shape vocabulary to reliably decode a molecule’s structure and sample diversely, we further evaluate MAGNet’s atom and bond allocation to shapes.\n\n#### MAGNet’s shape representations are superior to fixed fragments\n\nThe larger a given shape, the more the combinatorial aspect starts to dominate: with a size-limited vocabulary, it is challenging to reflect the diversity of a shape’s realisations during decoding. This is shown in [Fig.4](https://ar5iv.org/html/2305.19303#S4.F4 \"In MAGNet is the best AAO model on standard benchmarks ‣ 4.2 Generative performance evaluated on common benchmarks ‣ 4 Experiments ‣ MAGNet: Motif-Agnostic Generation of Molecules from Shapes\") a, which provides a qualitative view on shape representations. We extract shape representations of a given shape from the molecules sampled in [Table1](https://ar5iv.org/html/2305.19303#S4.T1 \"In 4.2 Generative performance evaluated on common benchmarks ‣ 4 Experiments ‣ MAGNet: Motif-Agnostic Generation of Molecules from Shapes\") and plot the two principal components of their fingerprints. Only for this shape, there are 791 representations in ZINC. Both PS-VAE as well as MoLeR are not able to cover the distribution fully, even though the shape appears commonly in the dataset. PS-VAE’s and MoLeR’s factorisation and vocabulary show lacking ability to cover all shape representations sufficiently. MAGNet, by contrast, covers all parts of the distribution, even outliers. [Fig.3](https://ar5iv.org/html/2305.19303#S4.F3 \"In 4 Experiments ‣ MAGNet: Motif-Agnostic Generation of Molecules from Shapes\") b shows the MMD quantification of the results in [Fig.3](https://ar5iv.org/html/2305.19303#S4.F3 \"In 4 Experiments ‣ MAGNet: Motif-Agnostic Generation of Molecules from Shapes\") a, confirming that MAGNet is able to best cover the entire distribution of shape representations. Being able to _reliably_ decode a large variety of molecular scaffolds is especially important for downstream tasks such a molecule optimisation.\n\n#### Allocation of atom and bonds to shapes\n\nExtending the sampling analysis in [Fig.3](https://ar5iv.org/html/2305.19303#S4.F3 \"In 4 Experiments ‣ MAGNet: Motif-Agnostic Generation of Molecules from Shapes\") b, we quantify the process of turning an abstract shape into a chemically valid substructure in [Fig.4](https://ar5iv.org/html/2305.19303#S4.F4 \"In MAGNet is the best AAO model on standard benchmarks ‣ 4.2 Generative performance evaluated on common benchmarks ‣ 4 Experiments ‣ MAGNet: Motif-Agnostic Generation of Molecules from Shapes\") c. For each shape in the ZINC dataset, we compute the similarities between the set of all predicted and ground truth allocations. Given a ground truth assignment and a successful shape decoding, we measure how the decoded allocation ranks compared to known allocations. In the majority of cases, MAGNet achieves rank 00 or 111 in the shape allocation, with uncommon rings being the most challenging to decode.\n\n### 4.4 Application across datasets and conditional sampling\n\nHaving analysed the generative performance of the MAGNet model and the benefit of the proposed shape fragmention, we continue to investigate how well the shape abstraction derived from the ZINC data translates to other datasets. After this, we showcase how one can use MAGNet’s whole context generation for the generation of linkers and scaffold constrained generation.\n\n#### Shape abstractions translate well across datasets\n\nTo examine the flexibility of our shape fragmentation, we evaluate its transferability to unseen datasets with distinct molecular distributions through zero-shot generalization in [AppendixC](https://ar5iv.org/html/2305.19303#A3 \"Appendix C Transferability of Shapes ‣ MAGNet: Motif-Agnostic Generation of Molecules from Shapes\"). We use the datasets QM9 (Wu et al., [2018](https://ar5iv.org/html/2305.19303#bib.bib50 \"\")), GuacaMol (Brown et al., [2019](https://ar5iv.org/html/2305.19303#bib.bib7 \"\")), CheMBL (Mendez et al., [2019](https://ar5iv.org/html/2305.19303#bib.bib36 \"\")) and L1000 (Subramanian et al., [2017](https://ar5iv.org/html/2305.19303#bib.bib48 \"\")). Note that we do not finetune any model on the unseen datasets and only use the vocabulary extracted from ZINC. MAGNet is able to achieve the highest similarity scores across all datasets, underscoring the flexibility of the fragmentation and MAGNet’s expressive power across the space of drug-like molecules.\n\n#### MAGNet efficiently generates molecules conditioned on shapes and scaffolds\n\nIn the context of potential downstream applications, we investigate novel scaffold conditioning methods made possible by MAGNet’s factorisation. Besides the latent space interpolation in [AppendixA](https://ar5iv.org/html/2305.19303#A1 \"Appendix A Interpolation ‣ MAGNet: Motif-Agnostic Generation of Molecules from Shapes\"), Figure [5](https://ar5iv.org/html/2305.19303#S4.F5 \"Figure 5 ‣ MAGNet efficiently generates molecules conditioned on shapes and scaffolds ‣ 4.4 Application across datasets and conditional sampling ‣ 4 Experiments ‣ MAGNet: Motif-Agnostic Generation of Molecules from Shapes\") illustrates that MAGNet is capable to condition not only on a single scaffold but also on multiple scaffolds, even when they are not directly connected within the resulting molecule. This poses a significant challenge for models like MoLeR, which rely on extending connected subgraphs for scaffold conditioning. Moreover, MAGNet enables conditioning solely based on shapes, enabling the free generation of atoms and bonds—a form of conditioning that was previously not possible.\n\n![Refer to caption](https://ar5iv.org/html/2305.19303/assets/assets/linker.png)Figure 5: Examples of conditional molecule generation with MAGNet. The generation is conditioned on (top) a complete fragment, including atoms and edges, and (bottom) two distinct shapes.\n\n## 5 Conclusion\n\nWe present MAGNet, a generative model for molecules that relies on a novel factorisation to disentangle structure from features, thus leading to a general abstraction in the space of molecules.\nMAGNet exhibits stronger performance at representing structures than existing models while also showing favourable results in generative tasks.\nWhile we argue that a global context like the one adopted in MAGNet is important for shape representations, modifications thereof can also be promising for sequential models.\nFinally, our proposed abstraction to shapes lends itself to _general_ applications in graph generative models beyond the molecular world.\n\nAcknowledgements\nJS and LH are thankful for valuable feedback from David Lüdke, John Rachwan, Tobias Schmidt, Simon Geisler, the DAML group, and Theis Lab. LH is supported by the Helmholtz Association under the joint research school “Munich School for Data Science - MUDS”.\n\n## References\n\n- Adilov (2021)\nSanjar Adilov.\n\nNeural Language Modeling for Molecule Generation, 2021.\n\n- Ahn et al. (2021)\nSungsoo Ahn, Binghong Chen, Tianzhe Wang, and Le Song.\n\nSpanning tree-based graph generation for molecules.\n\nIn _International Conference on Learning Representations_, 2021.\n\n- Assouel et al. (2018)\nRim Assouel, Mohamed Ahmed, Marwin H. Segler, Amir Saffari, and Yoshua Bengio.\n\nDEFactor: Differentiable Edge Factorization-based Probabilistic Graph Generation.\n\nTechnical report, arXiv, 2018.\n\n- Bengio et al. (2021)\nEmmanuel Bengio, Moksh Jain, Maksym Korablyov, Doina Precup, and Yoshua Bengio.\n\nFlow Network based Generative Models for Non-Iterative Diverse Candidate Generation.\n\nTechnical report, Neural Information Processing Systems, 2021.\n\n- Bian & Xie (2021)\nYuemin Bian and Xiang-Qun Xie.\n\nGenerative chemistry: drug discovery with deep learning generative models.\n\n_Journal of Molecular Modeling_, 2021.\n\nISSN 0948-5023.\n\ndoi: 10.1007/s00894-021-04674-8.\n\n- Bresson & Laurent (2019)\nXavier Bresson and Thomas Laurent.\n\nA Two Step Graph Convolutional Decoder for Molecule Generation.\n\nTechnical report, Machine Learning and the Physical Sciences Workshop, 2019.\n\n- Brown et al. (2019)\nNathan Brown, Marco Fiscato, Marwin H.S. Segler, and Alain C. Vaucher.\n\nGuacaMol: Benchmarking Models for de Novo Molecular Design.\n\n_Journal of Chemical Information and Modeling_, 2019.\n\nISSN 1549-9596, 1549-960X.\n\ndoi: 10.1021/acs.jcim.8b00839.\n\n- Butler et al. (2018)\nKeith T. Butler, Daniel W. Davies, Hugh Cartwright, Olexandr Isayev, and Aron Walsh.\n\nMachine learning for molecular and materials science.\n\n_Nature_, 2018.\n\nISSN 1476-4687.\n\ndoi: 10.1038/s41586-018-0337-2.\n\n- Choudhary et al. (2022)\nKamal Choudhary, Brian DeCost, Chi Chen, Anubhav Jain, Francesca Tavazza, Ryan Cohn, Cheol Woo Park, Alok Choudhary, Ankit Agrawal, Simon J. L. Billinge, Elizabeth Holm, Shyue Ping Ong, and Chris Wolverton.\n\nRecent advances and applications of deep learning methods in materials science.\n\n_npj Computational Materials_, 2022.\n\nISSN 2057-3960.\n\ndoi: 10.1038/s41524-022-00734-6.\n\n- De Cao & Kipf (2018)\nNicola De Cao and Thomas Kipf.\n\nMolGAN: An implicit generative model for small molecular graphs.\n\nTechnical report, arXiv, 2018.\n\n- Fang et al. (2023)\nYin Fang, Ningyu Zhang, Zhuo Chen, Xiaohui Fan, and Huajun Chen.\n\nMolecular Language Model as Multi-task Generator, 2023.\n\n- Flam-Shepherd et al. (2020)\nDaniel Flam-Shepherd, Tony Wu, and Alan Aspuru-Guzik.\n\nGraph Deconvolutional Generation.\n\nTechnical report, arXiv, 2020.\n\n- Flam-Shepherd et al. (2022)\nDaniel Flam-Shepherd, Kevin Zhu, and Alán Aspuru-Guzik.\n\nLanguage models can learn complex molecular distributions.\n\n_Nature Communications_, 2022.\n\nISSN 2041-1723.\n\ndoi: 10.1038/s41467-022-30839-x.\n\n- Geng et al. (2022)\nZijie Geng, Shufang Xie, Yingce Xia, Lijun Wu, Tao Qin, Jie Wang, Yongdong Zhang, Feng Wu, and Tie-Yan Liu.\n\nDe novo molecular generation via connection-aware motif mining.\n\nIn _The Eleventh International Conference on Learning Representations_, 2022.\n\n- Gilmer et al. (2017)\nJustin Gilmer, Samuel S Schoenholz, Patrick F Riley, Oriol Vinyals, and George E Dahl.\n\nNeural message passing for quantum chemistry.\n\nIn _International conference on machine learning_, pp.  1263–1272. PMLR, 2017.\n\n- Gómez-Bombarelli et al. (2018)\nRafael Gómez-Bombarelli, Jennifer N Wei, David Duvenaud, José Miguel Hernández-Lobato, Benjamín Sánchez-Lengeling, Dennis Sheberla, Jorge Aguilera-Iparraguirre, Timothy D Hirzel, Ryan P Adams, and Alán Aspuru-Guzik.\n\nAutomatic chemical design using a data-driven continuous representation of molecules.\n\n_ACS central science_, 4(2):268–276, 2018.\n\n- Grisoni (2023)\nFrancesca Grisoni.\n\nChemical language models for de novo drug design: Challenges and opportunities.\n\n_Current Opinion in Structural Biology_, 2023.\n\nISSN 0959-440X.\n\ndoi: 10.1016/j.sbi.2023.102527.\n\n- Gómez-Bombarelli et al. (2018)\nRafael Gómez-Bombarelli, Jennifer N. Wei, David Duvenaud, José Miguel Hernández-Lobato, Benjamín Sánchez-Lengeling, Dennis Sheberla, Jorge Aguilera-Iparraguirre, Timothy D. Hirzel, Ryan P. Adams, and Alán Aspuru-Guzik.\n\nAutomatic chemical design using a data-driven continuous representation of molecules.\n\n_ACS Central Science_, 2018.\n\nISSN 2374-7943, 2374-7951.\n\ndoi: 10.1021/acscentsci.7b00572.\n\n- Hetzel et al. (2022)\nLeon Hetzel, Simon Böhm, Niki Kilbertus, Stephan Günnemann, Mohammad Lotfollahi, and Fabian Theis.\n\nPredicting cellular responses to novel drug perturbations at a single-cell resolution.\n\nIn _Advances in Neural Information Processing Systems_, 2022.\n\n- Hoffman et al. (2022)\nSamuel C. Hoffman, Vijil Chenthamarakshan, Kahini Wadhawan, Pin-Yu Chen, and Payel Das.\n\nOptimizing molecules using efficient queries from property evaluations.\n\n_Nature Machine Intelligence_, 2022.\n\nISSN 2522-5839.\n\ndoi: 10.1038/s42256-021-00422-y.\n\n- Irwin et al. (2020)\nJohn J. Irwin, Khanh G. Tang, Jennifer Young, Chinzorig Dandarchuluun, Benjamin R. Wong, Munkhzul Khurelbaatar, Yurii S. Moroz, John Mayfield, and Roger A. Sayle.\n\nZINC20—A Free Ultralarge-Scale Chemical Database for Ligand Discovery.\n\n_Journal of Chemical Information and Modeling_, 2020.\n\nISSN 1549-9596.\n\ndoi: 10.1021/acs.jcim.0c00675.\n\n- Jin et al. (2018)\nWengong Jin, Regina Barzilay, and Tommi Jaakkola.\n\nJunction Tree Variational Autoencoder for Molecular Graph Generation.\n\nTechnical report, International Conference on Machine Learning, 2018.\n\n- Jin et al. (2020)\nWengong Jin, Regina Barzilay, and Tommi Jaakkola.\n\nHierarchical Generation of Molecular Graphs using Structural Motifs.\n\nTechnical report, International Conference on Machine Learning, 2020.\n\n- Kajino (2019)\nHiroshi Kajino.\n\nMolecular Hypergraph Grammar with Its Application to Molecular Optimization.\n\nIn _Proceedings of the 36th International Conference on Machine Learning_. PMLR, 2019.\n\n- Khemchandani et al. (2020)\nYash Khemchandani, Stephen O’Hagan, Soumitra Samanta, Neil Swainston, Timothy J. Roberts, Danushka Bollegala, and Douglas B. Kell.\n\nDeepGraphMolGen, a multi-objective, computational strategy for generating molecules with desirable properties: a graph convolution and reinforcement learning approach.\n\n_Journal of cheminformatics_, 2020.\n\n- Kingma et al. (2015)\nDurk P Kingma, Tim Salimans, and Max Welling.\n\nVariational Dropout and the Local Reparameterization Trick.\n\nIn _Advances in Neural Information Processing Systems_. Curran Associates, Inc., 2015.\n\n- Kong et al. (2022)\nXiangzhe Kong, Wenbing Huang, Zhixing Tan, and Yang Liu.\n\nMolecule Generation by Principal Subgraph Mining and Assembling, 2022.\n\n- Landrum (2010)\nG. Landrum.\n\nRDKit, 2010.\n\n- Li et al. (2018)\nYujia Li, Oriol Vinyals, Chris Dyer, Razvan Pascanu, and Peter Battaglia.\n\nLearning Deep Generative Models of Graphs.\n\nTechnical report, arXiv, 2018.\n\n- Lim et al. (2020)\nJaechang Lim, Sang-Yeon Hwang, Seungsu Kim, Seokhyun Moon, and Woo Youn Kim.\n\nScaffold based molecular design using graph generative model.\n\n_Chemical Science_, 2020.\n\nISSN 2041-6520, 2041-6539.\n\ndoi: 10.1039/C9SC04503A.\n\n- Liu et al. (2021)\nMeng Liu, Keqiang Yan, Bora Oztekin, and Shuiwang Ji.\n\nGraphEBM: Molecular Graph Generation with Energy-Based Models.\n\nTechnical report, arXiv, 2021.\n\n- Liu et al. (2018)\nQi Liu, Miltiadis Allamanis, Marc Brockschmidt, and Alexander L. Gaunt.\n\nConstrained Graph Variational Autoencoders for Molecule Design.\n\nTechnical report, Advances in Neural Information Processing Systems, 2018.\n\n- Luo et al. (2021)\nYouzhi Luo, Keqiang Yan, and Shuiwang Ji.\n\nGraphDF: A Discrete Flow Model for Molecular Graph Generation.\n\nTechnical report, International Conference on Machine Learning, 2021.\n\n- Ma et al. (2018)\nTengfei Ma, Jie Chen, and Cao Xiao.\n\nConstrained Generation of Semantically Valid Graphs via Regularizing Variational Autoencoders.\n\nTechnical report, Advances in Neural Information Processing Systems, 2018.\n\n- Maziarz et al. (2022)\nKrzysztof Maziarz, Henry Jackson-Flux, Pashmina Cameron, Finton Sirockin, Nadine Schneider, Nikolaus Stiefl, Marwin Segler, and Marc Brockschmidt.\n\nLearning to Extend Molecular Scaffolds with Structural Motifs.\n\nTechnical report, arXiv, 2022.\n\n- Mendez et al. (2019)\nDavid Mendez, Anna Gaulton, A Patrícia Bento, Jon Chambers, Marleen De Veij, Eloy Félix, María Paula Magariños, Juan F Mosquera, Prudence Mutowo, Michał Nowotka, et al.\n\nChembl: towards direct deposition of bioassay data.\n\n_Nucleic acids research_, 47(D1):D930–D940, 2019.\n\n- Mercado et al. (2021)\nRocío Mercado, Tobias Rastemo, Edvard Lindelöf, Günter Klambauer, Ola Engkvist, Hongming Chen, and Esben Jannik Bjerrum.\n\nGraph Networks for Molecular Design.\n\n_Machine Learning: Science and Technology_, 2021.\n\n- Moret et al. (2023)\nMichael Moret, Irene Pachon Angona, Leandro Cotos, Shen Yan, Kenneth Atz, Cyrill Brunner, Martin Baumgartner, Francesca Grisoni, and Gisbert Schneider.\n\nLeveraging molecular structure and bioactivity with chemical language models for de novo drug design.\n\n_Nature Communications_, 2023.\n\nISSN 2041-1723.\n\ndoi: 10.1038/s41467-022-35692-6.\n\n- Polykovskiy et al. (2020)\nDaniil Polykovskiy, Alexander Zhebrak, Benjamin Sanchez-Lengeling, Sergey Golovanov, Oktai Tatanov, Stanislav Belyaev, Rauf Kurbanov, Aleksey Artamonov, Vladimir Aladinskiy, Mark Veselov, Artur Kadurin, Simon Johansson, Hongming Chen, Sergey Nikolenko, Alan Aspuru-Guzik, and Alex Zhavoronkov.\n\nMolecular Sets (MOSES): A Benchmarking Platform for Molecular Generation Models, 2020.\n\n- Popova et al. (2019)\nMariya Popova, Mykhailo Shvets, Junier Oliva, and Olexandr Isayev.\n\nMolecularRNN: Generating realistic molecular graphs with optimized properties.\n\nTechnical report, arXiv, 2019.\n\n- Samanta et al. (2019)\nBidisha Samanta, Abir De, Gourhari Jana, Pratim Kumar Chattaraj, Niloy Ganguly, and Manuel Gomez-Rodriguez.\n\nNeVAE: A Deep Generative Model for Molecular Graphs, 2019.\n\n- Segler et al. (2018)\nMarwin HS Segler, Thierry Kogej, Christian Tyrchan, and Mark P Waller.\n\nGenerating focused molecule libraries for drug discovery with recurrent neural networks.\n\n_ACS central science_, 4(1):120–131, 2018.\n\n- Shi et al. (2020)\nChence Shi, Minkai Xu, Zhaocheng Zhu, Weinan Zhang, Ming Zhang, and Jian Tang.\n\nGraphAF: a Flow-based Autoregressive Model for Molecular Graph Generation.\n\nTechnical report, arXiv, 2020.\n\n- Shi et al. (2021)\nYunsheng Shi, Zhengjie Huang, Shikun Feng, Hui Zhong, Wenjin Wang, and Yu Sun.\n\nMasked Label Prediction: Unified Message Passing Model for Semi-Supervised Classification, 2021.\n\n- Shirzad et al. (2022)\nHamed Shirzad, Hossein Hajimirsadeghi, Amir H. Abdi, and Greg Mori.\n\nTD-GEN: Graph Generation Using Tree Decomposition.\n\nIn _Proceedings of The 25th International Conference on Artificial Intelligence and Statistics_. PMLR, 2022.\n\n- Simonovsky & Komodakis (2018)\nMartin Simonovsky and Nikos Komodakis.\n\nGraphVAE: Towards Generation of Small Graphs Using Variational Autoencoders, 2018.\n\n- Sommer et al. (2023)\nJohanna Sommer, Leon Hetzel, David Lüdke, Fabian J. Theis, and Stephan Günnemann.\n\nThe Power of Motifs as Inductive Bias for Learning Molecular Distributions.\n\n2023.\n\n- Subramanian et al. (2017)\nAravind Subramanian, Rajiv Narayan, Steven M Corsello, David D Peck, Ted E Natoli, Xiaodong Lu, Joshua Gould, John F Davis, Andrew A Tubelli, Jacob K Asiedu, et al.\n\nA next generation connectivity map: L1000 platform and the first 1,000,000 profiles.\n\n_Cell_, 171(6):1437–1452, 2017.\n\n- Tong et al. (2023)\nAlexander Tong, Nikolay Malkin, Guillaume Huguet, Yanlei Zhang, Jarrid Rector-Brooks, Kilian Fatras, Guy Wolf, and Yoshua Bengio.\n\nImproving and generalizing flow-based generative models with minibatch optimal transport.\n\n_arXiv preprint 2302.00482_, 2023.\n\n- Wu et al. (2018)\nZhenqin Wu, Bharath Ramsundar, Evan N. Feinberg, Joseph Gomes, Caleb Geniesse, Aneesh S. Pappu, Karl Leswing, and Vijay Pande.\n\nMoleculeNet: A Benchmark for Molecular Machine Learning, 2018.\n\n- Yang et al. (2021)\nSoojung Yang, Doyeong Hwang, Seul Lee, Seongok Ryu, and Sung Ju Hwang.\n\nHit and Lead Discovery with Explorative RL and Fragment-based Molecule Generation.\n\n_Advances in Neural Information Processing Systems_, 2021.\n\n- You et al. (2019)\nJiaxuan You, Bowen Liu, Rex Ying, Vijay Pande, and Jure Leskovec.\n\nGraph Convolutional Policy Network for Goal-Directed Molecular Graph Generation.\n\nTechnical report, arXiv, 2019.\n\n- Zang & Wang (2020)\nChengxi Zang and Fei Wang.\n\nMoFlow: An Invertible Flow Model for Generating Molecular Graphs.\n\nIn _Proceedings of the 26th ACM SIGKDD International Conference on Knowledge Discovery & Data Mining_, 2020.\n\ndoi: 10.1145/3394486.3403104.\n\n- Zhou et al. (2019)\nZhenpeng Zhou, Steven Kearnes, Li Li, Richard N. Zare, and Patrick Riley.\n\nOptimization of Molecules via Deep Reinforcement Learning.\n\n_Scientific Reports_, 2019.\n\nISSN 2045-2322.\n\ndoi: 10.1038/s41598-019-47148-x.\n\n\n## Appendix A Interpolation\n\n![Refer to caption](https://ar5iv.org/html/2305.19303/assets/assets/magnet_appendix_interpolation.png)Figure 6: We provide four interpolation examples for MAGNet and MoLeR. The input molecules (left and right) are shared between the two models. We report the Tanimoto similarity as a rough estimate for the interpolation’s goodness.\n\nExtending on [Fig.5](https://ar5iv.org/html/2305.19303#S4.F5 \"In MAGNet efficiently generates molecules conditioned on shapes and scaffolds ‣ 4.4 Application across datasets and conditional sampling ‣ 4 Experiments ‣ MAGNet: Motif-Agnostic Generation of Molecules from Shapes\"), we additionally provide examples for latent space interpolation in [Fig.6](https://ar5iv.org/html/2305.19303#A1.F6 \"In Appendix A Interpolation ‣ MAGNet: Motif-Agnostic Generation of Molecules from Shapes\"). During interpolation, MAGNet stays faithful to the shapes present in the input molecules. The last row shows a failure case of MAGNet: it identifies a shape multiset that can not be fully connected to a molecule.\n\n## Appendix B Displacement of Latent Codes\n\nTo quantify the discrepancy between input and reconstructed molecule visible in [Fig.3](https://ar5iv.org/html/2305.19303#S4.F3 \"In 4 Experiments ‣ MAGNet: Motif-Agnostic Generation of Molecules from Shapes\") a, we measure the displacement of latent codes. That is, we obtain the latent representation for the input molecule, decode this latent representation into the output molecule and then obtain the latent representation for the output molecule. This verifies what can be observed qualitatively in [Fig.3](https://ar5iv.org/html/2305.19303#S4.F3 \"In 4 Experiments ‣ MAGNet: Motif-Agnostic Generation of Molecules from Shapes\") a–the evaluated baselines can not reliably decode complex shapes.\n\n![Refer to caption](https://ar5iv.org/html/2305.19303/assets/assets/displacement.png)Figure 7: Displacement between latent representation of the input vs. the decoded output.\n\n## Appendix C Transferability of Shapes\n\nWe calculate the Tanimoto similarity in the reconstruction setting for a variety of datasets, [Fig.8](https://ar5iv.org/html/2305.19303#A3.F8 \"In Appendix C Transferability of Shapes ‣ MAGNet: Motif-Agnostic Generation of Molecules from Shapes\"). For all evaluated datasets, MAGNet achieves the best similarity scores between molecules, highlighting the transferability of shapes across various distributions.\n\n![Refer to caption](https://ar5iv.org/html/2305.19303/assets/assets/tanimoto.png)Figure 8: Tanimoto similarity for zero-shot reconstruction on unseen datasets.\n\nWe compute the tanimoto scores only for those molecules that can be represented via the shapes that were extracted from the ZINC dataset. For the QM9 dataset, MAGNet can represent roughly 75% of the molecules in the dataset. This is due to unseen shapes which make up around 11% out of the total number of 289,966 shapes. For GuacaMol, MAGNet can represent around 97% of the molecules in the dataset. Out of the 9,562,028 shapes in GuacaMol, only 0.5% are missing from the shape vocabulary extracted from the ZINC dataset. We consider a more flexible decomposition of shapes that translates even better across datasets important future work.\n\n## Appendix D Details Encoder\n\nWe build the node features that are processed in MAGNet’s encoder from different attributes, see [Table2](https://ar5iv.org/html/2305.19303#A5.T2 \"In Appendix E MAGNet: Hyperparameters and Training ‣ MAGNet: Motif-Agnostic Generation of Molecules from Shapes\"). We include the atom type (‘atom\\_id\\_dim’), its charge (‘atom\\_charge\\_dim’), as well as its multiplicity value (‘atom\\_multiplicity\\_dim’). We proceed accordingly for the shape level and include the shape id (‘shape\\_id\\_dim’), its multiplicity (‘shape\\_multiplicity\\_dim’), as well chemical features (‘motif\\_feat\\_dim’) computed through RDKit (Landrum, [2010](https://ar5iv.org/html/2305.19303#bib.bib28 \"\")). Since the latter are not learned during training, the features are mapped to the specified dimensionality by a linear map.\n\nAfter processing the resulting node features through the graph transformer (Shi et al., [2021](https://ar5iv.org/html/2305.19303#bib.bib44 \"\")) with ‘num\\_layers\\_enc’-many layers, they are aggregated in different ways and mapped to specified dimensions as defined by ‘enc\\_<>\\_dim’ for the atoms, shapes, joins, and leaves, respectively. On top, the shape embeddings are additionally processed with the same transformer architecture (‘num\\_layers\\_shape\\_enc’) to inform the embedding about the shape-level connectivity. We then concatenate the resulting graph-level embeddings and further combine them with global molecule features, again computed via RDKit and then mapped to the required dimension (‘enc\\_global\\_dim’), before mapping them to the latent space via the latent module which has ‘num\\_layers\\_latent’-many layers.\n\n## Appendix E MAGNet: Hyperparameters and Training\n\nTraining MAGNet for one epoch takes around 303030 minutes on a single ‘NVIDIA GeForce GTX 1080 Ti’. We trained MAGNet for 303030 epochs and fitted the latent normalizing flow post-hoc for 500050005000 epochs in total and conducted a random hyperparameter sweep including the learning rate, beta annealing scheme, and the number of layers for the encoder and latent module. The MAGNet model reported in the main text has 12.612.612.6 M parameters and its configuration is depicted in [Table2](https://ar5iv.org/html/2305.19303#A5.T2 \"In Appendix E MAGNet: Hyperparameters and Training ‣ MAGNet: Motif-Agnostic Generation of Molecules from Shapes\"). In its current version, MAGNet processes roughly 707070 molecules per second during training and samples about 888 molecules per second during inference.\n\n|     |     |     |     |\n| --- | --- | --- | --- |\n| Parameter | Value |\n| Train | batch\\_size | 64 |\n| flow\\_batch\\_size | 1024 |\n|  | lr | 3.07×10−43.07superscript1043.07\\\\times 10^{-4} |\n|  | lr\\_sch\\_decay | 0.9801 |\n|  | flow\\_lr | 1×10−31superscript1031\\\\times 10^{-3} |\n|  | flow\\_lr\\_sch\\_decay | 0.99 |\n|  | flow\\_patience | 13 |\n|  | gradclip | 3 |\n| Model | latent\\_dim | 100 |\n|  | dim\\_config | enc\\_atom\\_dim | 25 |\n|  | enc\\_shapes\\_dim | 25 |\n|  | enc\\_joins\\_dim | 25 |\n|  | enc\\_leaves\\_dim | 25 |\n|  | enc\\_global\\_dim | 25 |\n|  | atom\\_id\\_dim | 25 |\n|  | atom\\_charge\\_dim | 10 |\n|  | atom\\_multiplicity\\_dim | 10 |\n|  | shape\\_id\\_dim | 35 |\n|  | shape\\_multiplicity\\_dim | 10 |\n|  | motif\\_feat\\_dim | 50 |\n|  | shape\\_hidden | 256 |\n|  | shape\\_gnn\\_dim | 128 |\n|  | motif\\_seq\\_pos\\_dim | 15 |\n|  | leaf\\_hidden | 256 |\n|  | latent\\_flow\\_hidden | 512 |\n\n|     |     |     |     |\n| --- | --- | --- | --- |\n| Parameter | Value |\n| Model | node\\_aggregation | sum |\n| num\\_layers\\_latent | 2 |\n|  | num\\_layers\\_enc | 2 |\n|  | num\\_layers\\_shape\\_enc | 4 |\n|  | num\\_layers\\_hgraph | 3 |\n|  | loss\\_weights | joins | 1 |\n|  | leaves | 1 |\n|  | motifs | 1 |\n|  | hypergraph | 1 |\n|  | beta\\_annealing | max | 0.01 |\n|  | init | 0 |\n|  | step | 0.0005 |\n|  | every | 2500 |\n|  | start | 2000 |\n\nTable 2: Parameter configuration of the best MAGNet runs.\n\n[◄](https://ar5iv.org/html/2305.19302) [![ar5iv homepage](https://ar5iv.org/assets/ar5iv.png)](https://ar5iv.org/) [Feeling\\\\\n\\\\\nlucky?](https://ar5iv.org/feeling_lucky) [Conversion\\\\\n\\\\\nreport](https://ar5iv.org/log/2305.19303) [Report\\\\\n\\\\\nan issue](https://github.com/dginev/ar5iv/issues/new?template=improve-article--arxiv-id-.md&title=Improve+article+2305.19303) [View original\\\\\n\\\\\non arXiv](https://arxiv.org/abs/2305.19303) [►](https://ar5iv.org/html/2305.19305)",
+  "sections": {
+    "1 Introduction": {
+      "content": "The role of machine learning (ML) models in generating novel compounds has grown significantly, finding applications in fields like drug discovery, material science, and chemistry (Bian & Xie, [2021]; Butler et al., [2018]; Choudhary et al., [2022]; Hetzel et al., [2022]; Moret et al., [2023]). These models offer a promising avenue for efficiently navigating the vast chemical space and generating unique molecules with specific properties (Zhou et al., [2019]; Hoffman et al., [2022]).\nA key ingredient contributing to the success of these models is their ability to encode molecules in a meaningful way, often employing graph neural networks (GNNs) to capture the structural intricacies (Gilmer et al., [2017]; Shi et al., [2021]; Mercado et al., [2021]).\nMoreover, the inclusion of molecular fragments, known as motifs, significantly influences the generation process by enabling the model to explicitly encode complex structures such as cycles (Sommer et al., [2023]). This contrasts with the gradual formation of ring-like structures from individual atoms, forming chains until both ends unite.\n\nIn the context of fragment-based models, researchers have adopted various techniques to construct fragment vocabularies, which can be categorised into chemically inspired and data-driven approaches. For example, both JT-VAE (Jin et al., [2018]) and MoLeR (Maziarz et al., [2022]) adhere to a heuristic strategy that dissects molecules into predefined structures, primarily consisting of ring systems and acyclic linkers. However, the diverse appearances of molecular structures result in various challenges concerning the vocabulary. While the large fragments in JT-VAE do not generalise well to larger datasets, the number of fragments becomes an issue for MoLeR. Such challenges are not unique to heuristic fragmentation methods but also extend to data-driven approaches like PS-VAE (Kong et al., [2022]) and MiCaM (Geng et al., [2022]). These approaches can set the number of chosen fragments but often resort to representing cyclic structures by combinations of chains. MiCaM, in particular, takes an approach that additionally incorporates attachment points for each fragment, resulting in a vocabulary that is “connection-aware”, increasing its size by a significant margin.\nThis leads to a situation where the included fragments often fall short to comprehensively represent the full spectrum of molecules present in the datasets (Sommer et al., [2023]). Consequently, a generative model must refer to individual atoms in order to generate uncommon structures, a demanding task as the infrequent structures are often also more complex.\n\nOur work addresses this issue by abstracting fragments to shapes, representing only the binary adjacencies, and using this abstraction for vocabulary creation. Since the same shape can lead to multiple distinct atom and bond representations, this effectively reduces the required vocabulary size to capture a dataset’s molecules, while still encoding any hard-to-learn structural elements. Simultaneously, we propose an effective generation procedure in the form of our MAGNet model, which learns to generate molecules from abstract shape sets. The shape abstraction enables us sample the _entire_ molecule context at each stage and construct the molecular graph in a hierarchical fashion. This hierarchy progresses from shapes and their connectivity to the atom level, where shape representations are generated, ultimately leading to the full definition of the molecule. Notably, our model is the first to freely learn the distribution over shape representations, enabling it to sample a greater variety of atom and bond attributes compared to fragment-based approaches.\n\nWhile we identify limitations in some of the benchmarks\nfor _effectively_ evaluating whether complex structures have been captured, we provide alternative analyses to offer a more comprehensive understanding of the generative behaviour of our and other approaches.\nOverall, our results highlight MAGNet’s ability to reliably reconstruct uncommon shapes, including large cycles, surpassing other methods that face challenges in this area.\nAdditionally, MAGNet excels in sampling a wider range of shape representations, closely aligning with the original data distribution.\nWe also demonstrate MAGNet’s advantageous properties, including its fidelity to the presented latent code—a departure from existing methods.\nFinally, our model enables simultaneous conditioning on multiple scaffolds, underscoring its versatility for diverse applications in molecular generation.\n\n![Refer to caption]Figure 1: Current methods use motifs to compose new molecules. MAGNet advances this perspective and abstracts molecular subgraphs to untyped shapes. Being agnostic to atom and bond features in the beginning of the generation process, MAGNet generates molecules with great structural variety.",
+      "citations": [
+        {
+          "start_pos": 181,
+          "end_pos": 199,
+          "text": "Bian & Xie, [2021]",
+          "paper_id": "bib.bib5",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 201,
+          "end_pos": 222,
+          "text": "Butler et al., [2018]",
+          "paper_id": "bib.bib8",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 224,
+          "end_pos": 248,
+          "text": "Choudhary et al., [2022]",
+          "paper_id": "bib.bib9",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 250,
+          "end_pos": 271,
+          "text": "Hetzel et al., [2022]",
+          "paper_id": "bib.bib19",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 273,
+          "end_pos": 293,
+          "text": "Moret et al., [2023]",
+          "paper_id": "bib.bib38",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 443,
+          "end_pos": 462,
+          "text": "Zhou et al., [2019]",
+          "paper_id": "bib.bib54",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 464,
+          "end_pos": 486,
+          "text": "Hoffman et al., [2022]",
+          "paper_id": "bib.bib20",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 692,
+          "end_pos": 713,
+          "text": "Gilmer et al., [2017]",
+          "paper_id": "bib.bib15",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 715,
+          "end_pos": 733,
+          "text": "Shi et al., [2021]",
+          "paper_id": "bib.bib44",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 735,
+          "end_pos": 757,
+          "text": "Mercado et al., [2021]",
+          "paper_id": "bib.bib37",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 951,
+          "end_pos": 972,
+          "text": "Sommer et al., [2023]",
+          "paper_id": "bib.bib47",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1328,
+          "end_pos": 1346,
+          "text": "Jin et al., [2018]",
+          "paper_id": "bib.bib22",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1359,
+          "end_pos": 1381,
+          "text": "Maziarz et al., [2022]",
+          "paper_id": "bib.bib35",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1889,
+          "end_pos": 1908,
+          "text": "Kong et al., [2022]",
+          "paper_id": "bib.bib27",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1921,
+          "end_pos": 1940,
+          "text": "Geng et al., [2022]",
+          "paper_id": "bib.bib14",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 2441,
+          "end_pos": 2462,
+          "text": "Sommer et al., [2023]",
+          "paper_id": "bib.bib47",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        }
+      ]
+    },
+    "2 Modelling molecules from shapes": {
+      "content": "We will first detail the factorisation of the data distribution of molecular graphs, denoted as ℙ​(𝒢)ℙ𝒢\\\\mathbb{P}(\\\\mathcal{G}). Following this, we will introduce our novel approach to fragmenting molecules into shapes and present the corresponding MAGNet model.\n\n#### Factorising the data distribution ℙ​(𝒢)ℙ𝒢\\\\mathbb{P}(\\\\mathcal{G})\n\nA molecular graph 𝒢𝒢\\\\mathcal{G} is defined by its structure together with its node and edge features, describing atoms and bonds, respectively. In this work, we consider a factorisation of ℙ​(𝒢)ℙ𝒢\\\\mathbb{P}(\\\\mathcal{G}) that builds the molecular graph 𝒢𝒢\\\\mathcal{G} from its shape representation, i.e.\n\n|     |     |     |     |\n| --- | --- | --- | --- |\n|  | ℙ​(𝒢)ℙ𝒢\\\\displaystyle\\\\mathbb{P}(\\\\mathcal{G}) | =ℙ​(𝒢∣𝒢𝒮)​ℙ​(𝒢𝒮),absentℙconditional𝒢subscript𝒢𝒮ℙsubscript𝒢𝒮\\\\displaystyle=\\\\mathbb{P}(\\\\mathcal{G}\\\\mid\\\\mathcal{G}\\_{\\\\mathcal{S}})\\\\,\\\\mathbb{P}(\\\\mathcal{G}\\_{\\\\mathcal{S}})\\\\>, |  |\n\nwhere 𝒢𝒢\\\\mathcal{G} refers to the normal molecular graph and 𝒢𝒮subscript𝒢𝒮\\\\mathcal{G}\\_{\\\\mathcal{S}} to its coarser shape graph.\nTo factorise ℙ​(𝒢𝒮)ℙsubscript𝒢𝒮\\\\mathbb{P}(\\\\mathcal{G}\\_{\\\\mathcal{S}}) further, we consider a fragmentation into a multiset of shapes 𝒮𝒮\\\\mathcal{S} and their typed connectivity A∈{0,C,N,…}\\|𝒮\\|×\\|𝒮\\|𝐴superscript0CN…𝒮𝒮A\\\\in\\\\{0,\\\\text{C},\\\\text{N},\\\\dots\\\\}^{\\\\lvert\\\\mathcal{S}\\\\rvert\\\\times\\\\lvert\\\\mathcal{S}\\\\rvert}. Each shape S∈𝒮𝑆𝒮S\\\\in\\\\mathcal{S} can be classified as one of three categories, namely\n\n(i)rings,\n(ii)junctions, and\n(iii)chains.\n\nA shape S𝑆S only holds _structural information_ about its s=\\|S\\|𝑠𝑆s=\\\\lvert S\\\\rvert nodes, meaning we can represent it as a binary matrix, i.e. S∈{0,1}s×s𝑆superscript01𝑠𝑠S\\\\in\\\\{0,1\\\\}^{s\\\\times s}. The shape connectivity A𝐴A, on the other hand, is typed and encodes whether two shapes share an atom, signified by A≠0𝐴0A\\\\neq 0, and also the respective atom type of the join, e.g. C or N. Note that A𝐴A is a shape-level representations which does not hold any information about the exact position of the connection between shapes. Further, since all cyclic structures within the molecular graph are considered individual shapes, A𝐴A always describes a tree on the shape-level.\n\nMoving forward to the atom-level representation, a shape S𝑆S can be equipped with node and edges features, corresponding to atom and bond types, respectively. We consider this representation of S𝑆S to constitute a typed subgraph M𝑀M, or fragment, of the input graph 𝒢𝒢\\\\mathcal{G}, and the associated multiset within the molecule ℳℳ\\\\mathcal{M}. We note that a shape S𝑆S can map to multiple distinct M𝑀M as only the binary adjacencies will be shared between them; we will later on make use of context knowledge to select a suitable M𝑀M.\n\nThe shape representations ℳℳ\\\\mathcal{M} and the shape connectivity A𝐴A do not fully describe 𝒢𝒢\\\\mathcal{G} yet as they do not specify the exact atomic positions where the shapes have to be joined. For this, we define the join set 𝒥𝒥\\\\mathcal{J} which can be understood as the set of join nodes j𝑗j that are contained in two motifs: 𝒥={j∣j∈Mk,j∈Ml,Ak​l≠0,Sk,Sl∈𝒮}𝒥conditional-set𝑗formulae-sequence𝑗subscript𝑀𝑘formulae-sequence𝑗subscript𝑀𝑙formulae-sequencesubscript𝐴𝑘𝑙0subscript𝑆𝑘subscript𝑆𝑙𝒮\\\\mathcal{J}=\\\\{j\\\\mid j\\\\in M\\_{k},\\ j\\\\in M\\_{l},\\ A\\_{kl}\\\\neq 0,\\ S\\_{k},S\\_{l}\\\\in\\\\mathcal{S}\\\\}. Finally, the full molecule is defined by attaching leaf atoms ℒℒ\\\\mathcal{L}, which are those atoms with degree di=1subscript𝑑𝑖1d\\_{i}=1 and with neighbour j∈𝒩i𝑗subscript𝒩𝑖j\\\\in\\\\mathcal{N}\\_{i} with dj=3subscript𝑑𝑗3d\\_{j}=3.\n\nIn conclusion, ℙ​(𝒢)ℙ𝒢\\\\mathbb{P}(\\\\mathcal{G}) is factorised into the shape representations ℳℳ\\\\mathcal{M}, the join set 𝒥𝒥\\\\mathcal{J}, and the leaf set ℒℒ\\\\mathcal{L}:\n\n|     |     |     |     |\n| --- | --- | --- | --- |\n|  | ℙ​(𝒢)ℙ𝒢\\\\displaystyle\\\\mathbb{P}(\\\\mathcal{G}) | =ℙ​(ℒ,𝒥,ℳ)absentℙℒ𝒥ℳ\\\\displaystyle=\\\\mathbb{P}(\\\\mathcal{L},\\\\mathcal{J},\\\\mathcal{M}) |  |\n|  |  | =ℙ​(ℒ∣ℳ,𝒥)​ℙ​(𝒥∣ℳ,A)​ℙ​(ℳ∣𝒢𝒮)​ℙ​(𝒢𝒮),absentℙconditionalℒℳ𝒥ℙconditional𝒥ℳ𝐴ℙconditionalℳsubscript𝒢𝒮ℙsubscript𝒢𝒮\\\\displaystyle=\\\\mathbb{P}(\\\\mathcal{L}\\\\mid\\\\mathcal{M},\\\\mathcal{J})\\\\mathbb{P}(\\\\mathcal{J}\\\\mid\\\\mathcal{M},A)\\\\,\\\\mathbb{P}(\\\\mathcal{M}\\\\mid\\\\mathcal{G}\\_{\\\\mathcal{S}})\\\\,\\\\mathbb{P}(\\\\mathcal{G}\\_{\\\\mathcal{S}})\\\\>, |  |\n\nwhere we use 𝒢𝒮subscript𝒢𝒮\\\\mathcal{G}\\_{\\\\mathcal{S}} to factorise the distribution. Note that 𝒥𝒥\\\\mathcal{J} is _conditionally independent_ of 𝒮𝒮\\\\mathcal{S} given the motifs ℳℳ\\\\mathcal{M}. The same applies to ℒℒ\\\\mathcal{L} being conditionally independent of A𝐴A given 𝒥𝒥\\\\mathcal{J}.\n\nDuring learning, we start with the coarser shape-level, that is 𝒮𝒮\\\\mathcal{S} and A𝐴A, and then proceed to the atom level for ℳℳ\\\\mathcal{M} and 𝒥𝒥\\\\mathcal{J}. Finally, we learn the distribution of leaves ℒℒ\\\\mathcal{L}. Note that unlike sequential generation methods, this factorisation considers the entire molecule context at all times with only the level of detail increasing.\n\n### 2.1 Fragmentation into shapes\n\n![Refer to caption]Figure 2: On the shape-level, MAGNet predicts the shape multiset 𝒮𝒮\\\\mathcal{S} and its connectivity A𝐴A. Progressing to the atom-level, 𝒢𝒮subscript𝒢𝒮\\\\mathcal{G}\\_{\\\\mathcal{S}} informs the generation of shape representations ℳℳ\\\\mathcal{M}. To fully define the molecular graph 𝒢𝒢\\\\mathcal{G}, the joining positions 𝒥𝒥\\\\mathcal{J} and the leaf atoms ℒℒ\\\\mathcal{L} are predicted.\n\nMAGNet’s fragmentation scheme aims to break down a given molecule into clear structural elements. Initially, we remove all leaf atoms ℒℒ\\\\mathcal{L} across the graph, following the approach outlined in previous works (Jin et al., [2020]; Maziarz et al., [2022]). Leaves are those nodes that have degree di=1subscript𝑑𝑖1d\\_{i}=1 and whose neighbouring node j∈𝒩i𝑗subscript𝒩𝑖j\\\\in\\\\mathcal{N}\\_{i} fulfills d𝒩i=3subscript𝑑subscript𝒩𝑖3d\\_{\\\\mathcal{N}\\_{i}}=3. This step helps to divide the molecule 𝒢𝒢\\\\mathcal{G} into cyclic and acyclic parts. Importantly, instead of modelling the connection between two fragments Misubscript𝑀𝑖M\\_{i} and Mjsubscript𝑀𝑗M\\_{j} with a connecting bond, we represent it by a shared atom, referred to as the join atom ν∈𝒥𝜈𝒥\\\\nu\\\\in\\\\mathcal{J}. One benefit of this approach is that fragments are not truncated and, for example, two cycles which are connected by only one join atom are identified as two cycles instead of a single cycle that is connected to a chain at both ends.\n\nMoreover, in order to reduce the number of required shapes as much as possible, we further decompose the resulting acyclic fragments. To this end, we introduce “junctions” which are defined by a center node with degree three or four present in an acyclic structure. The junction then contains the center nodes as well as its neighbours. This additional refinement reduces the number of fragments by a factor of three, allowing to classify them into rings, junctions, and chains. On the ZINC dataset (Irwin et al., [2020]), consisting of 249,456 compounds, our fragmentation results in 7371 typed subgraphs. When compared to the decomposition BBB procedure (Jin et al., [2020]; Maziarz et al., [2022]), our approach reduces complexity by collapsing acyclic structures into distinct shapes, leading to a reduction in vocabulary size by more than a half. Additionally, in contrast to data-driven methods like those outlined in Kong et al. ( [2022]) and Geng et al. ( [2022]), our decomposition method maintains structural integrity through a top-down approach.\n\nAbstracting these typed subgraphs further to shapes ultimately results in 347 distinct shapes, where—in the best case—up to almost 800 fragments are consolidated into a single shape token. While the generative model is required to map a single shape to all its various representations, this fragmentation also enables us to model smoother transitions between shape representations. For instance, consider the molecules “C1NNCC1” and “C1NCNC1”, which only differ in the relative positioning among atoms. Using shapes, the model can account for this difference without selecting potentially dissimilar tokens from a large vocabulary. We discuss the potential of our approach for transferability across datasets in [Section4.4]Application across datasets and conditional sampling ‣ 4 Experiments ‣ MAGNet: Motif-Agnostic Generation of Molecules from Shapes\") and [AppendixC]Appendix C Transferability of Shapes ‣ MAGNet: Motif-Agnostic Generation of Molecules from Shapes\").\n\n### 2.2 MAGNet’s generation process\n\nMAGNet is designed to represent the hierarchy of the factorisation into shape- and atom-level from [Section2]Factorising the data distribution ℙ⁢(𝒢) ‣ 2 Modelling molecules from shapes ‣ MAGNet: Motif-Agnostic Generation of Molecules from Shapes\"), cf. Fig. ​ [2]Figure 2 ‣ 2.1 Fragmentation into shapes ‣ 2 Modelling molecules from shapes ‣ MAGNet: Motif-Agnostic Generation of Molecules from Shapes\"). The model is trained as a VAE model (Kingma et al., [2015]), where the latent vectors z𝑧z are trained to encode meaningful semantics about the input data. That is, given a vector z𝑧z from the latent space, MAGNet’s generation process first works on the shape level to predict 𝒢𝒮subscript𝒢𝒮\\\\mathcal{G}\\_{\\\\mathcal{S}}, defined by the multiset 𝒮𝒮\\\\mathcal{S} its connectivity A𝐴A, before going to the atom level which is defined by the fragments ℳℳ\\\\mathcal{M}, joins 𝒥𝒥\\\\mathcal{J}, and leaves ℒℒ\\\\mathcal{L}.\n\n#### Shape-Level\n\nOn the shape-level, MAGNet first generates the shape multiset 𝒮𝒮\\\\mathcal{S}—the same shape can occur multiple times in one molecule—from the latent representation z𝑧z. More specifically, we learn ℙ​(𝒮∣z)ℙconditional𝒮𝑧\\\\mathbb{P}(\\\\mathcal{S}\\\\mid z) by conditioning the generation on the latent code z𝑧z and the intermediate representation of the shapes by a transformer model. On the sorted shape set, the network is optimised via Cross-Entropy (CE) loss, denoted by L𝒮subscript𝐿𝒮L\\_{\\\\mathcal{S}}.\n\nGiven the shape multiset 𝒮𝒮\\\\mathcal{S}, MAGNet infers the shape connectivity A𝐴A between shapes Si,Sj∈𝒮subscript𝑆𝑖subscript𝑆𝑗𝒮S\\_{i},S\\_{j}\\\\in\\\\mathcal{S}. Formally, we learn ℙ​(A∣𝒮,z)=∏i,j=1nℙ​(Ai​j=t∣S,z)ℙconditional𝐴𝒮𝑧superscriptsubscriptproduct𝑖𝑗1𝑛ℙsubscript𝐴𝑖𝑗conditional𝑡𝑆𝑧\\\\mathbb{P}(A\\\\mid\\\\mathcal{S},z)=\\\\prod\\_{i,j=1}^{n}\\\\mathbb{P}(A\\_{ij}=t\\\\mid S,z) where t∈{0,C,N,…}𝑡0CN…t\\\\in\\\\{0,\\\\text{C},\\\\text{N},\\\\dots\\\\} not only encodes the existence (or absence) of a shape connection but also its atom type.\nFurther, we assume the individual connections, Ai​jsubscript𝐴𝑖𝑗A\\_{ij} and Al​ksubscript𝐴𝑙𝑘A\\_{lk}, to be independent given the shape multiset 𝒮𝒮\\\\mathcal{S} and the latent representation z𝑧z. MAGNet implements this connectivity module using an MLP, optimised with CE loss LAsubscript𝐿𝐴L\\_{A}. We compute the loss on the shape level as L𝒢𝒮=L𝒮+LAsubscript𝐿subscript𝒢𝒮subscript𝐿𝒮subscript𝐿𝐴L\\_{\\\\mathcal{G}\\_{\\\\mathcal{S}}}=L\\_{\\\\mathcal{S}}+L\\_{A}. It is worth noting that the same shape can have different atom representations depending on its positions in the molecular graph, highlighting the importance of predicting A𝐴A for generating atom-level shape representations.\n\n#### Atom-Level\n\nLeveraging the shape set 𝒮𝒮\\\\mathcal{S} and connectivity A𝐴A, which together define a molecule’s shape-level representation, MAGNet transitions to the atom-level by discerning appropriate node and edge attributes for each shape, referred to as atom and bond types ℳℳ\\\\mathcal{M}. This step is pivotal in MAGNet’s generation process, granting it independence from a pre-established fragment set and thus enhancing its flexibility.\nTo model the shape representation ℙ​(Mi∣𝒮,A,z)ℙconditionalsubscript𝑀𝑖𝒮𝐴𝑧\\\\mathbb{P}(M\\_{i}\\\\mid\\\\mathcal{S},A,z) of shape Sisubscript𝑆𝑖S\\_{i}, the atoms are generated using a transformer model that constructs its memory by encoding the shape graph and incorporating embeddings tailored to each individual shape (Shi et al., [2021]). Unlike the shape set, the sizes of the shapes are fixed, enabling a structured representation of each position within the shape.\n\nSubsequently, the resulting atom embeddings are leveraged to determine the corresponding bond types Mbsuperscript𝑀𝑏M^{b} between connected nodes. This bond determination is achieved through the utilisation of an MLP, which effectively captures the necessary relationships for assigning correct bond types.\nNote that conditioning on A𝐴A ensures that Mksubscript𝑀𝑘M\\_{k} includes all atoms required for connectivity also on the atom-level, i.e. the atom allocations for M𝑀M have to respect all join types defined by the shape connectivity A𝐴A: Ak​l∈⋃jMka∩Mlasubscript𝐴𝑘𝑙subscript𝑗subscriptsuperscript𝑀𝑎𝑘subscriptsuperscript𝑀𝑎𝑙A\\_{kl}\\\\in\\\\bigcup\\_{j}M^{a}\\_{k}\\\\cap M^{a}\\_{l}, where a𝑎a signifies exclusive consideration of atoms. We optimise both atoms and bonds with a CE loss and denote the combined loss by Lℳsubscript𝐿ℳL\\_{\\\\mathcal{M}}.\n\nNext, to establish connectivity on the atom level within the molecular graph, MAGNet proceeds to identify the join nodes 𝒥𝒥\\\\mathcal{J}. The join nodes’ types are already determined by the connectivity A𝐴A. MAGNet accomplishes this by predicting the specific atom positions pasubscript𝑝𝑎p\\_{a} that need to be combined, collectively forming the join set 𝒥𝒥\\\\mathcal{J}. The likelihood of merging nodes i𝑖i and j𝑗j in shape representations Mksubscript𝑀𝑘M\\_{k} and Mlsubscript𝑀𝑙M\\_{l} is represented by the merge probability Ji​j(k,l)=ℙ​(pi≡pj∣ℳ,A,z)superscriptsubscript𝐽𝑖𝑗𝑘𝑙ℙsubscript𝑝𝑖conditionalsubscript𝑝𝑗ℳ𝐴𝑧J\\_{ij}^{(k,l)}=\\\\mathbb{P}(p\\_{i}\\\\equiv p\\_{j}\\\\mid\\\\mathcal{M},A,z), which constitutes the join matrix J(k,l)∈\\[0,1\\]VSk×VSlsuperscript𝐽𝑘𝑙superscript01subscript𝑉subscript𝑆𝑘subscript𝑉subscript𝑆𝑙J^{(k,l)}\\\\in\\\\leavevmode\\\\nobreak\\ \\[0,1\\]^{V\\_{S\\_{k}}\\\\times V\\_{S\\_{l}}}. It is modelled and optimised using an MLP and CE loss L𝒥subscript𝐿𝒥L\\_{\\\\mathcal{J}}.\n\nFinally, predicting the leaves ℒℒ\\\\mathcal{L} involves two key aspects: determining the correct atom type for each leaf and establishing its connection to the molecule’s atom representation, denoted as 𝒞𝒞\\\\mathcal{C} for core molecule. To learn ℙ​(ℒS∣𝒞,z)ℙconditionalsubscriptℒ𝑆𝒞𝑧\\\\mathbb{P}(\\\\mathcal{L}\\_{S}\\\\mid\\\\mathcal{C},z), we assess each node position within the shape representation MSsubscript𝑀𝑆M\\_{S}. Similar to the approach employed in modelling the shape representation P​(Mi\\|S,A,z)𝑃conditionalsubscript𝑀𝑖𝑆𝐴𝑧P(M\\_{i}\\|S,A,z) for shape Sisubscript𝑆𝑖S\\_{i}, MAGNet utilises a transformer model to generate atom representations, optimised with CE loss Lℒsubscript𝐿ℒL\\_{\\\\mathcal{L}}. This model constructs its memory by encoding the present atom graph and incorporating embeddings tailored to each unique shape representation. The final atom loss is defined by L𝒢=Lℳ+L𝒥+Lℒsubscript𝐿𝒢subscript𝐿ℳsubscript𝐿𝒥subscript𝐿ℒL\\_{\\\\mathcal{G}}=L\\_{\\\\mathcal{M}}+L\\_{\\\\mathcal{J}}+L\\_{\\\\mathcal{L}}.\n\n### 2.3 The MAGNet encoder\n\nMAGNet’s encoder aims to learn the approximate posterior ℚ​(z∣𝒢)ℚconditional𝑧𝒢\\\\mathbb{Q}(z\\\\mid\\\\mathcal{G}). At its core, the encoder leverages a graph transformer Shi et al. ( [2021]) for generating node embeddings of the molecular graph. Since MAGNet generates molecules in a coarse to fine-grained fashion, it is beneficial to encode information about the decomposition of the molecules. To achieve this, we use an additional GNN to capture the coarse connectivity within the shape graph. The embeddings of the molecular and the shape graph are computed by aggregating over the individual atom and shape nodes, respectively. In addition to these aggregations, we exclusively aggregate joins and leaves to represent the other essential components of the graph. The representation of the individual components—molecular graph, shapes, joins, and leaves—are concatenated and mapped to the latent space by an MLP, constituting the graph embedding z𝒢subscript𝑧𝒢z\\_{\\\\mathcal{G}}. More details about the chosen node features as well as technical specifications of the encoder can be found in [AppendixD]Appendix D Details Encoder ‣ MAGNet: Motif-Agnostic Generation of Molecules from Shapes\").\n\nTaken together, we optimise MAGNet according to the VAE setting, maximising the ELBO:\n\n|     |     |     |     |\n| --- | --- | --- | --- |\n|  | L𝐿\\\\displaystyle L | =𝔼z∼ℚ​\\[ℙ​(𝒢∣z)\\]+β​DKL​(ℚ​(z∣𝒢)∣P)withP∼𝒩​(0,𝟙)formulae-sequenceabsentsubscript𝔼similar-to𝑧ℚdelimited-\\[\\]ℙconditional𝒢𝑧𝛽subscript𝐷KLconditionalℚconditional𝑧𝒢𝑃withsimilar-to𝑃𝒩01\\\\displaystyle=\\\\mathbb{E}\\_{z\\\\sim\\\\mathbb{Q}}\\\\bigl{\\[}\\\\mathbb{P}\\\\bigl{(}\\\\mathcal{G}\\\\mid z\\\\bigr{)}\\\\bigr{\\]}+\\\\beta D\\_{\\\\text{KL}}\\\\bigl{(}\\\\mathbb{Q}(z\\\\mid\\\\mathcal{G})\\\\mid P\\\\bigr{)}\\\\qquad\\\\text{with}\\\\quad P\\\\sim\\\\mathcal{N}(0,\\\\mathds{1}) |  |\n|  |  | =L𝒢𝒮+L𝒢+β​DKL,absentsubscript𝐿subscript𝒢𝒮subscript𝐿𝒢𝛽subscript𝐷KL\\\\displaystyle=L\\_{\\\\mathcal{G}\\_{\\\\mathcal{S}}}+L\\_{\\\\mathcal{G}}+\\\\beta D\\_{\\\\text{KL}}\\\\>, |  |\n\nwhere the KL-divergence DKLsubscript𝐷KLD\\_{\\\\text{KL}} serves to regularise the posterior ℚ​(z∣𝒢)ℚconditional𝑧𝒢\\\\mathbb{Q}(z\\\\mid\\\\mathcal{G}) towards similarity with the Normal prior P𝑃P in the latent space, weighted by β𝛽\\\\beta. However, we have observed that this regularisation alone is inadequate for achieving a smoothly structured latent space. To address this, we apply a Normalizing Flow to the latent space, aligning it more effectively with the prior (Tong et al., [2023]).",
+      "citations": [
+        {
+          "start_pos": 5610,
+          "end_pos": 5628,
+          "text": "Jin et al., [2020]",
+          "paper_id": "bib.bib23",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 5630,
+          "end_pos": 5652,
+          "text": "Maziarz et al., [2022]",
+          "paper_id": "bib.bib35",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 6898,
+          "end_pos": 6918,
+          "text": "Irwin et al., [2020]",
+          "paper_id": "bib.bib21",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 7055,
+          "end_pos": 7073,
+          "text": "Jin et al., [2020]",
+          "paper_id": "bib.bib23",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 7075,
+          "end_pos": 7097,
+          "text": "Maziarz et al., [2022]",
+          "paper_id": "bib.bib35",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 7322,
+          "end_pos": 7342,
+          "text": "Kong et al. ( [2022]",
+          "paper_id": "bib.bib27",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 7348,
+          "end_pos": 7368,
+          "text": "Geng et al. ( [2022]",
+          "paper_id": "bib.bib14",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 8908,
+          "end_pos": 8929,
+          "text": "Kingma et al., [2015]",
+          "paper_id": "bib.bib26",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 11853,
+          "end_pos": 11871,
+          "text": "Shi et al., [2021]",
+          "paper_id": "bib.bib44",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 15014,
+          "end_pos": 15033,
+          "text": "Shi et al. ( [2021]",
+          "paper_id": "bib.bib44",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 17280,
+          "end_pos": 17299,
+          "text": "Tong et al., [2023]",
+          "paper_id": "bib.bib49",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        }
+      ]
+    },
+    "3 Related Work": {
+      "content": "#### Molecule generation\n\nExisting generative models can be broadly divided into two categories: (1) string-based models, relying on string representations like SMILES or SELFIES (Gómez-Bombarelli et al., [2018]; Segler et al., [2018]; Flam-Shepherd et al., [2022]; Fang et al., [2023]; Adilov, [2021]; Grisoni, [2023]), which do not leverage structural information, and (2) graph-based models, which are inherently centered around molecular graphs.\nGraph-based approaches involve models that represent molecular graphs (1) primarily at the atom level and (2) predominantly through fragments. Regarding the generation process, they can be further divided into sequential methods (Khemchandani et al., [2020]; Shi et al., [2020]; Popova et al., [2019]; Mercado et al., [2021]; Luo et al., [2021]; Liu et al., [2018]; Li et al., [2018]; Assouel et al., [2018]; You et al., [2019]; Yang et al., [2021]; Lim et al., [2020]; Kajino, [2019]; Jin et al., [2020]; Bengio et al., [2021]; Ahn et al., [2021]; Shirzad et al., [2022]), building molecules per fragment while conditioning on a partial molecule, and all-at-once (AAO) approaches (Simonovsky & Komodakis, [2018]; Ma et al., [2018]; Liu et al., [2021]; De Cao & Kipf, [2018]; Zang & Wang, [2020]; Bresson & Laurent, [2019]; Flam-Shepherd et al., [2020]; Samanta et al., [2019]; Kong et al., [2022]) that create each aspect of the molecular graph in a single step.\n\n#### Fragmentation and shape representation\n\nVarious techniques are available for constructing fragment vocabularies, with a distinction between chemically-inspired and data-driven approaches. For example, both HierVAE (Jin et al., [2020]) and MoLeR (Maziarz et al., [2022]) adopt a heuristic strategy known as “breaking bridge bonds” to decompose molecules into rings and remainder fragments, emphasising chemically valid substructures. In a similar vein, JT-VAE (Jin et al., [2018]) employs fragmentation guided by the construction of junction trees. In contrast, PS-VAE (Kong et al., [2022]) and MiCaM (Geng et al., [2022]) take a data-driven bottom-up approach, creating fragments by merging smaller components, starting from single atoms. MiCaM even integrates attachment points, resulting in a larger, “connection-aware” vocabulary.\n\nMAGNet is a graph-based model that employs a unique approach by generating each hierarchy level in a single step, similar to existing AAO approaches. It positions itself between the traditional categories of single-atom and fragment-based models by utilising shapes as building blocks and subsequently generating appropriate atom and bond attributes. Our new fragmentation approach is designed to achieve concise shape representations, expanding its capacity to encode diverse structures within the same vocabulary size.",
+      "citations": [
+        {
+          "start_pos": 186,
+          "end_pos": 211,
+          "text": "Bombarelli et al., [2018]",
+          "paper_id": "bib.bib18",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 213,
+          "end_pos": 234,
+          "text": "Segler et al., [2018]",
+          "paper_id": "bib.bib42",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 241,
+          "end_pos": 264,
+          "text": "Shepherd et al., [2022]",
+          "paper_id": "bib.bib13",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 266,
+          "end_pos": 285,
+          "text": "Fang et al., [2023]",
+          "paper_id": "bib.bib11",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 287,
+          "end_pos": 301,
+          "text": "Adilov, [2021]",
+          "paper_id": "bib.bib1",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 303,
+          "end_pos": 318,
+          "text": "Grisoni, [2023]",
+          "paper_id": "bib.bib17",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 680,
+          "end_pos": 707,
+          "text": "Khemchandani et al., [2020]",
+          "paper_id": "bib.bib25",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 709,
+          "end_pos": 727,
+          "text": "Shi et al., [2020]",
+          "paper_id": "bib.bib43",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 729,
+          "end_pos": 750,
+          "text": "Popova et al., [2019]",
+          "paper_id": "bib.bib40",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 752,
+          "end_pos": 774,
+          "text": "Mercado et al., [2021]",
+          "paper_id": "bib.bib37",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 776,
+          "end_pos": 794,
+          "text": "Luo et al., [2021]",
+          "paper_id": "bib.bib33",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 796,
+          "end_pos": 814,
+          "text": "Liu et al., [2018]",
+          "paper_id": "bib.bib32",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 816,
+          "end_pos": 833,
+          "text": "Li et al., [2018]",
+          "paper_id": "bib.bib29",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 835,
+          "end_pos": 857,
+          "text": "Assouel et al., [2018]",
+          "paper_id": "bib.bib3",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 859,
+          "end_pos": 877,
+          "text": "You et al., [2019]",
+          "paper_id": "bib.bib52",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 879,
+          "end_pos": 898,
+          "text": "Yang et al., [2021]",
+          "paper_id": "bib.bib51",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 900,
+          "end_pos": 918,
+          "text": "Lim et al., [2020]",
+          "paper_id": "bib.bib30",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 920,
+          "end_pos": 934,
+          "text": "Kajino, [2019]",
+          "paper_id": "bib.bib24",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 936,
+          "end_pos": 954,
+          "text": "Jin et al., [2020]",
+          "paper_id": "bib.bib23",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 956,
+          "end_pos": 977,
+          "text": "Bengio et al., [2021]",
+          "paper_id": "bib.bib4",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 979,
+          "end_pos": 997,
+          "text": "Ahn et al., [2021]",
+          "paper_id": "bib.bib2",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 999,
+          "end_pos": 1021,
+          "text": "Shirzad et al., [2022]",
+          "paper_id": "bib.bib45",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1132,
+          "end_pos": 1162,
+          "text": "Simonovsky & Komodakis, [2018]",
+          "paper_id": "bib.bib46",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1164,
+          "end_pos": 1181,
+          "text": "Ma et al., [2018]",
+          "paper_id": "bib.bib34",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1183,
+          "end_pos": 1201,
+          "text": "Liu et al., [2021]",
+          "paper_id": "bib.bib31",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1206,
+          "end_pos": 1224,
+          "text": "Cao & Kipf, [2018]",
+          "paper_id": "bib.bib10",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1226,
+          "end_pos": 1245,
+          "text": "Zang & Wang, [2020]",
+          "paper_id": "bib.bib53",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1247,
+          "end_pos": 1272,
+          "text": "Bresson & Laurent, [2019]",
+          "paper_id": "bib.bib6",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1279,
+          "end_pos": 1302,
+          "text": "Shepherd et al., [2020]",
+          "paper_id": "bib.bib12",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1304,
+          "end_pos": 1326,
+          "text": "Samanta et al., [2019]",
+          "paper_id": "bib.bib41",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1328,
+          "end_pos": 1347,
+          "text": "Kong et al., [2022]",
+          "paper_id": "bib.bib27",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1635,
+          "end_pos": 1653,
+          "text": "Jin et al., [2020]",
+          "paper_id": "bib.bib23",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1666,
+          "end_pos": 1688,
+          "text": "Maziarz et al., [2022]",
+          "paper_id": "bib.bib35",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1880,
+          "end_pos": 1898,
+          "text": "Jin et al., [2018]",
+          "paper_id": "bib.bib22",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1989,
+          "end_pos": 2008,
+          "text": "Kong et al., [2022]",
+          "paper_id": "bib.bib27",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 2021,
+          "end_pos": 2040,
+          "text": "Geng et al., [2022]",
+          "paper_id": "bib.bib14",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        }
+      ]
+    },
+    "4 Experiments": {
+      "content": "We evaluate MAGNet’s performance across several dimensions of the generation process. First, we investigate the reconstruction and sampling of shapes 𝒮𝒮\\\\mathcal{S}, as the fundamental component of MAGNet’s factorisation, and assess how faithfully our model represents the diverse structural characteristics found in molecules. We continue to evaluate the generative performance using established benchmarks. Next, we analyse MAGNet’s ability to determine suitable atom and bond allocations ℳℳ\\\\mathcal{M}, highlighting its distinctive approach compared to baseline models. Moreover, we demonstrate how MAGNet’s factorisation and shape vocabulary facilitate its ability to generalise effectively across different datasets in a zero-shot manner. Finally, we explore the possibilities enabled by our factorisation, such as conditioning on various levels of the generation process.\n\n![Refer to caption]Figure 3: (a) Reconstruction of molecules that include large cycles or complex junctions. Relying on individual atoms to build these structures is not sufficient. Only MAGNet is able to reliably decode its latent code z𝒢subscript𝑧𝒢z\\_{\\\\mathcal{G}}. (b) Percentage of reconstructed shapes. MAGNet substantially improves in reconstructing both common and—more importantly—uncommon shapes. (c) Comparison of sampled shapes to shape occurrences in the training distribution. A ratio of 111 is optimal.\n\n### 4.1 Using shapes to represent structural variety of molecules\n\n#### Reconstructing large cycles\n\nOur first experiment provides qualitative insights into how accurately shapes are decoded, ℙ​(𝒮\\|z𝒢)ℙconditional𝒮subscript𝑧𝒢\\\\mathbb{P}(\\\\mathcal{S}\\\\,\\|\\\\,z\\_{\\\\mathcal{G}}). For this experiment, we employ two baselines: PS-VAE (Kong et al., [2022]) and MoLeR (Maziarz et al., [2022]), the models with the best performance within their respective category on the GuacaMol Benchmark (see Sec. [4.2]Generative performance evaluated on common benchmarks ‣ 4 Experiments ‣ MAGNet: Motif-Agnostic Generation of Molecules from Shapes\")).\nWe assess the decoder’s performance in reconstructing molecules from the test set, which includes uncommon shapes like large rings or complex junctions. Our observations reveal that the baseline models have difficulty in constructing complex shapes, as illustrated in Figure [3]Figure 3 ‣ 4 Experiments ‣ MAGNet: Motif-Agnostic Generation of Molecules from Shapes\") a. This limitation is likely attributed to the absence of such shapes in their top-k𝑘k vocabularies. Consequently, these models face the challenge of constructing shapes such as large rings from individual atoms. In contrast, our proposed model, MAGNet, operates with a moderately-sized shape vocabulary that includes complex shapes, enabling it to generate molecules that closely adhere to the latent code and the corresponding ground truth molecules. We quantify this result through the displacement of latent codes in [AppendixB]Appendix B Displacement of Latent Codes ‣ MAGNet: Motif-Agnostic Generation of Molecules from Shapes\").\n\n#### MAGNet reliably decodes shapes\n\nBuilding on our analysis of large cycles and uncommon junctions, we extend our investigation to assess how effectively different models can reconstruct the shape set 𝒮𝒮\\\\mathcal{S} in a general context. Given our focus on ℙ​(𝒮\\|z)ℙconditional𝒮𝑧\\\\mathbb{P}(\\\\mathcal{S}\\\\,\\|\\\\,z), we can disregard the shape connectivity A𝐴A and representations ℳℳ\\\\mathcal{M}. As illustrated in [Fig.3]In 4 Experiments ‣ MAGNet: Motif-Agnostic Generation of Molecules from Shapes\") b, our findings demonstrate that MAGNet consistently outperforms both MoLeR and PS-VAE. Notably, our results provide additional support for the hypothesis that the other methods do not effectively learn the concept of a shape, relying primarily on the information encoded in their vocabulary. As a result, they may struggle to decode a common shape S𝑆S when the signal originally comes from an uncommon representation M𝑀M.\n\n#### MAGNet matches the distribution of shapes more accurately\n\nTo further check that uncommon shapes are also sampled, we analyse the shape set of generated molecules. If the other models are able to represent scaffolds that are not included in their vocabulary, they should be able to reflect the reference distribution of shapes. [Fig.3]In 4 Experiments ‣ MAGNet: Motif-Agnostic Generation of Molecules from Shapes\") a shows that this is _not_ the case in practice. For this evaluation, we decompose sampled molecules into their shapes. We then measure the models’ over- and undersampling behaviour based on the ratio rSisubscript𝑟subscript𝑆𝑖r\\_{S\\_{i}}:\n\n|     |     |     |\n| --- | --- | --- |\n|  | rSi=cs​(Si)∑kcs​(Sk)×∑kct​(Sk)ct​(Si),subscript𝑟subscript𝑆𝑖subscript𝑐𝑠subscript𝑆𝑖subscript𝑘subscript𝑐𝑠subscript𝑆𝑘subscript𝑘subscript𝑐𝑡subscript𝑆𝑘subscript𝑐𝑡subscript𝑆𝑖r\\_{S\\_{i}}=\\\\frac{c\\_{s}(S\\_{i})}{\\\\sum\\_{k}c\\_{s}(S\\_{k})}\\\\times\\\\frac{\\\\sum\\_{k}c\\_{t}(S\\_{k})}{c\\_{t}(S\\_{i})}\\\\>, |  |\n\nwhere ctsubscript𝑐𝑡c\\_{t} and cssubscript𝑐𝑠c\\_{s} refer to the count function applied to the training set and sampled sets, respectively. On common shapes, i.e. those that occur in more than 10% of the molecules, all evaluated models are able to match the ratio of the ZINC distribution. For uncommon shapes, however, both MoLeR and PS-VAE fail: while PS-VAE heavily oversamples both ring-like structures and chain-like structures, MoLeR oversamples chain-like structures and undersamples ring-like structures. MAGNet matches the reference distribution best across categories and we conclude that the proposed abstraction to shapes is also beneficial for generation.\n\n### 4.2 Generative performance evaluated on common benchmarks\n\n\\\\RawFloats\n\nTable 1: GuacaMol and MOSES Benchmark. We report mean and standard deviation using 5 random seeds and highlight the best overall graph-based method as well as the best within each category.\n\n|  |  | GuacaMol | MOSES |\n|  |  | FCD (↑)↑(\\\\uparrow) | KL (↑)↑(\\\\uparrow) | IntDiv (↑)↑(\\\\uparrow) | logP (↓)↓(\\\\downarrow) | SA (↓)↓(\\\\downarrow) | QED (↓)↓(\\\\downarrow) |\n| SM. | CharVAE | 0.17 ±plus-or-minus\\\\pm 0.08 | 0.78 ±plus-or-minus\\\\pm 0.04 | 0.88 ±plus-or-minus\\\\pm 0.01 | 0.87 ±plus-or-minus\\\\pm 0.14 | 0.48 ±plus-or-minus\\\\pm 0.13 | 0.06 ±plus-or-minus\\\\pm 0.03 |\n| SM.-LSTM | 0.93 ±plus-or-minus\\\\pm 0.00 | 1.00 ±plus-or-minus\\\\pm 0.00 | 0.87 ±plus-or-minus\\\\pm 0.00 | 0.12 ±plus-or-minus\\\\pm 0.01 | 0.04 ±plus-or-minus\\\\pm 0.02 | 0.00 ±plus-or-minus\\\\pm 0.00 |\n| Sequential | GraphAF | 0.05 ±plus-or-minus\\\\pm 0.00 | 0.67 ±plus-or-minus\\\\pm 0.01 | 0.93 ±plus-or-minus\\\\pm 0.00 | 0.41 ±plus-or-minus\\\\pm 0.02 | 0.88 ±plus-or-minus\\\\pm 0.10 | 0.22 ±plus-or-minus\\\\pm 0.01 |\n| HierVAE | 0.53 ±plus-or-minus\\\\pm 0.14 | 0.92 ±plus-or-minus\\\\pm 0.01 | 0.87 ±plus-or-minus\\\\pm 0.01 | 0.36 ±plus-or-minus\\\\pm 0.17 | 0.20 ±plus-or-minus\\\\pm 0.14 | 0.03 ±plus-or-minus\\\\pm 0.00 |\n| MiCaM | 0.63 ±plus-or-minus\\\\pm 0.02 | 0.94 ±plus-or-minus\\\\pm 0.00 | 0.87 ±plus-or-minus\\\\pm 0.00 | 0.20 ±plus-or-minus\\\\pm 0.05 | 0.51 ±plus-or-minus\\\\pm 0.03 | 0.08 ±plus-or-minus\\\\pm 0.00 |\n| JTVAE | 0.75 ±plus-or-minus\\\\pm 0.00 | 0.94 ±plus-or-minus\\\\pm 0.00 | 0.86 ±plus-or-minus\\\\pm 0.00 | 0.28 ±plus-or-minus\\\\pm 0.03 | 0.34 ±plus-or-minus\\\\pm 0.01 | 0.01 ±plus-or-minus\\\\pm 0.00 |\n| MoLeR | 0.80 ±plus-or-minus\\\\pm 0.01 | 0.98 ±plus-or-minus\\\\pm 0.00 | 0.87 ±plus-or-minus\\\\pm 0.00 | 0.13 ±plus-or-minus\\\\pm 0.02 | 0.06 ±plus-or-minus\\\\pm 0.01 | 0.01 ±plus-or-minus\\\\pm 0.01 |\n| AAO | PSVAE | 0.28 ±plus-or-minus\\\\pm 0.01 | 0.83 ±plus-or-minus\\\\pm 0.00 | 0.89 ±plus-or-minus\\\\pm 0.00 | 0.34 ±plus-or-minus\\\\pm 0.02 | 1.18 ±plus-or-minus\\\\pm 0.05 | 0.05 ±plus-or-minus\\\\pm 0.00 |\n| MAGNet | 0.76 ±plus-or-minus\\\\pm 0.00 | 0.95 ±plus-or-minus\\\\pm 0.00 | 0.88 ±plus-or-minus\\\\pm 0.00 | 0.22 ±plus-or-minus\\\\pm 0.01 | 0.12 ±plus-or-minus\\\\pm 0.01 | 0.01 ±plus-or-minus\\\\pm 0.00 |\n\nEmploying two standard benchmarks for de-novo molecule generation, we establish MAGNet’s competitive generative performance. The GuacaMol benchmark provides a framework for assessing the ability of a generative model to sample in accordance with the distribution of a molecular dataset (Brown et al., [2019]). Next to evaluating the uniqueness and novelty of sampled molecules, the benchmark also computes distributional distances to the reference, i.e. the KL-divergence and Fréchet distance (FCD). We use the MOSES benchmark (Polykovskiy et al., [2020]) to report measures for the internal diversity (IntDiv) of generated molecules as well as chemical properties such as synthetic accessability (SA), the octanol-water partition coefficient (logP), and the viability for drugs (QED).\n\nBaselines for these benchmarks additionally include JTVAE (Jin et al., [2018]), HierVAE (Jin et al., [2020]), and MiCaM (Geng et al., [2022]) as sequential, fragment-based methods. For those model with a variable vocabulary, we set the size to 350. We also include GraphAF (Shi et al., [2020]) as a purely atom-based model. While the focus of this work lies on graph-based molecule generation, we furthermore add the SMILES-based baseline of the GuacaMol benchmark SMILES-LSTM (SM-LSTM) (Segler et al., [2018]) as well as the SMILES-based VAE CharVAE (Gómez-Bombarelli et al., [2018]). Importantly, SM-LSTM does not have a latent space and can thus not perform targeted decoding. For all baselines, we use the hyperparameters specified in their respective works. We specify MAGNet’s hyperparameter configuration in [AppendixE]Appendix E MAGNet: Hyperparameters and Training ‣ MAGNet: Motif-Agnostic Generation of Molecules from Shapes\").\n\n#### MAGNet is the best AAO model on standard benchmarks\n\nThe benchmark is conducted on 104superscript10410^{4} latent codes sampled from the prior distribution, z∼Psimilar-to𝑧𝑃z\\\\sim P, and decoded into valid molecules. Our results for both benchmarks on the ZINC dataset are depicted in [Table1]In 4.2 Generative performance evaluated on common benchmarks ‣ 4 Experiments ‣ MAGNet: Motif-Agnostic Generation of Molecules from Shapes\"). We do not report Novelty and Uniqueness, as almost all evaluated models achieve 100% on these metrics. Solely GraphAF and HierVAE achieve 91% and 96% Uniqueness and Novelty, respectively. For baselines like SM-LSTM and CharVAE, which are not able to achieve 100% Validity, we sample until we obtain 104superscript10410^{4} valid molecules. While MoLeR sets the state of the art on both FCD and KL, MAGNet overall performs competitively, outperforming all other graph-based baselines. This supports the proposed factorisation in [Section2]Factorising the data distribution ℙ⁢(𝒢) ‣ 2 Modelling molecules from shapes ‣ MAGNet: Motif-Agnostic Generation of Molecules from Shapes\") while also challenging the common perception that methods for molecule generation must rely on motif vocabularies to obtain good generative performance.\n\nMoreover, despite the FCD being one of the most important metrics for molecular distribution learning, we find that it fails to provide insights about the structural diversity of the molecules that are generated. Upon further investigation, we evaluate the benchmark on a subset of 104superscript10410^{4} molecules from the training data. The subset was filtered to include only the 10 most common shapes found in the dataset, resulting in an FCD score of 0.89. This observation offers an explanation for why models like MoLeR can achieve state-of-the-art FCD scores, despite not accurately capturing the distribution of uncommon shapes, as demonstrated in [Section4.1]Using shapes to represent structural variety of molecules ‣ 4 Experiments ‣ MAGNet: Motif-Agnostic Generation of Molecules from Shapes\"). This underscores that our evaluation of the structural diversity of molecule is orthogonal to these benchmarks, providing valuable insights into the tails of the molecular distribution.\n\n![Refer to caption]Figure 4: (a) Example of generated fragments by MAGNet and baseline methods. (b) MMD computation to quantify similarity between generated and ground truth shape representations. (c) Rank comparison between predicted fragments and their original counterparts.\n\n### 4.3 Generation of shape representations ℳℳ\\\\mathcal{M}\n\nHaving established MAGNet’s ability to utilise its shape vocabulary to reliably decode a molecule’s structure and sample diversely, we further evaluate MAGNet’s atom and bond allocation to shapes.\n\n#### MAGNet’s shape representations are superior to fixed fragments\n\nThe larger a given shape, the more the combinatorial aspect starts to dominate: with a size-limited vocabulary, it is challenging to reflect the diversity of a shape’s realisations during decoding. This is shown in [Fig.4]In MAGNet is the best AAO model on standard benchmarks ‣ 4.2 Generative performance evaluated on common benchmarks ‣ 4 Experiments ‣ MAGNet: Motif-Agnostic Generation of Molecules from Shapes\") a, which provides a qualitative view on shape representations. We extract shape representations of a given shape from the molecules sampled in [Table1]In 4.2 Generative performance evaluated on common benchmarks ‣ 4 Experiments ‣ MAGNet: Motif-Agnostic Generation of Molecules from Shapes\") and plot the two principal components of their fingerprints. Only for this shape, there are 791 representations in ZINC. Both PS-VAE as well as MoLeR are not able to cover the distribution fully, even though the shape appears commonly in the dataset. PS-VAE’s and MoLeR’s factorisation and vocabulary show lacking ability to cover all shape representations sufficiently. MAGNet, by contrast, covers all parts of the distribution, even outliers. [Fig.3]In 4 Experiments ‣ MAGNet: Motif-Agnostic Generation of Molecules from Shapes\") b shows the MMD quantification of the results in [Fig.3]In 4 Experiments ‣ MAGNet: Motif-Agnostic Generation of Molecules from Shapes\") a, confirming that MAGNet is able to best cover the entire distribution of shape representations. Being able to _reliably_ decode a large variety of molecular scaffolds is especially important for downstream tasks such a molecule optimisation.\n\n#### Allocation of atom and bonds to shapes\n\nExtending the sampling analysis in [Fig.3]In 4 Experiments ‣ MAGNet: Motif-Agnostic Generation of Molecules from Shapes\") b, we quantify the process of turning an abstract shape into a chemically valid substructure in [Fig.4]In MAGNet is the best AAO model on standard benchmarks ‣ 4.2 Generative performance evaluated on common benchmarks ‣ 4 Experiments ‣ MAGNet: Motif-Agnostic Generation of Molecules from Shapes\") c. For each shape in the ZINC dataset, we compute the similarities between the set of all predicted and ground truth allocations. Given a ground truth assignment and a successful shape decoding, we measure how the decoded allocation ranks compared to known allocations. In the majority of cases, MAGNet achieves rank 00 or 111 in the shape allocation, with uncommon rings being the most challenging to decode.\n\n### 4.4 Application across datasets and conditional sampling\n\nHaving analysed the generative performance of the MAGNet model and the benefit of the proposed shape fragmention, we continue to investigate how well the shape abstraction derived from the ZINC data translates to other datasets. After this, we showcase how one can use MAGNet’s whole context generation for the generation of linkers and scaffold constrained generation.\n\n#### Shape abstractions translate well across datasets\n\nTo examine the flexibility of our shape fragmentation, we evaluate its transferability to unseen datasets with distinct molecular distributions through zero-shot generalization in [AppendixC]Appendix C Transferability of Shapes ‣ MAGNet: Motif-Agnostic Generation of Molecules from Shapes\"). We use the datasets QM9 (Wu et al., [2018]), GuacaMol (Brown et al., [2019]), CheMBL (Mendez et al., [2019]) and L1000 (Subramanian et al., [2017]). Note that we do not finetune any model on the unseen datasets and only use the vocabulary extracted from ZINC. MAGNet is able to achieve the highest similarity scores across all datasets, underscoring the flexibility of the fragmentation and MAGNet’s expressive power across the space of drug-like molecules.\n\n#### MAGNet efficiently generates molecules conditioned on shapes and scaffolds\n\nIn the context of potential downstream applications, we investigate novel scaffold conditioning methods made possible by MAGNet’s factorisation. Besides the latent space interpolation in [AppendixA]Appendix A Interpolation ‣ MAGNet: Motif-Agnostic Generation of Molecules from Shapes\"), Figure [5]Figure 5 ‣ MAGNet efficiently generates molecules conditioned on shapes and scaffolds ‣ 4.4 Application across datasets and conditional sampling ‣ 4 Experiments ‣ MAGNet: Motif-Agnostic Generation of Molecules from Shapes\") illustrates that MAGNet is capable to condition not only on a single scaffold but also on multiple scaffolds, even when they are not directly connected within the resulting molecule. This poses a significant challenge for models like MoLeR, which rely on extending connected subgraphs for scaffold conditioning. Moreover, MAGNet enables conditioning solely based on shapes, enabling the free generation of atoms and bonds—a form of conditioning that was previously not possible.\n\n![Refer to caption]Figure 5: Examples of conditional molecule generation with MAGNet. The generation is conditioned on (top) a complete fragment, including atoms and edges, and (bottom) two distinct shapes.",
+      "citations": [
+        {
+          "start_pos": 1730,
+          "end_pos": 1749,
+          "text": "Kong et al., [2022]",
+          "paper_id": "bib.bib27",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1762,
+          "end_pos": 1784,
+          "text": "Maziarz et al., [2022]",
+          "paper_id": "bib.bib35",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 8156,
+          "end_pos": 8176,
+          "text": "Brown et al., [2019]",
+          "paper_id": "bib.bib7",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 8397,
+          "end_pos": 8423,
+          "text": "Polykovskiy et al., [2020]",
+          "paper_id": "bib.bib39",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 8715,
+          "end_pos": 8733,
+          "text": "Jin et al., [2018]",
+          "paper_id": "bib.bib22",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 8745,
+          "end_pos": 8763,
+          "text": "Jin et al., [2020]",
+          "paper_id": "bib.bib23",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 8777,
+          "end_pos": 8796,
+          "text": "Geng et al., [2022]",
+          "paper_id": "bib.bib14",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 8930,
+          "end_pos": 8948,
+          "text": "Shi et al., [2020]",
+          "paper_id": "bib.bib43",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 9144,
+          "end_pos": 9165,
+          "text": "Segler et al., [2018]",
+          "paper_id": "bib.bib42",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 9214,
+          "end_pos": 9239,
+          "text": "Bombarelli et al., [2018]",
+          "paper_id": "bib.bib16",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 15766,
+          "end_pos": 15783,
+          "text": "Wu et al., [2018]",
+          "paper_id": "bib.bib50",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 15796,
+          "end_pos": 15816,
+          "text": "Brown et al., [2019]",
+          "paper_id": "bib.bib7",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 15827,
+          "end_pos": 15848,
+          "text": "Mendez et al., [2019]",
+          "paper_id": "bib.bib36",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 15861,
+          "end_pos": 15887,
+          "text": "Subramanian et al., [2017]",
+          "paper_id": "bib.bib48",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        }
+      ]
+    },
+    "5 Conclusion": {
+      "content": "We present MAGNet, a generative model for molecules that relies on a novel factorisation to disentangle structure from features, thus leading to a general abstraction in the space of molecules.\nMAGNet exhibits stronger performance at representing structures than existing models while also showing favourable results in generative tasks.\nWhile we argue that a global context like the one adopted in MAGNet is important for shape representations, modifications thereof can also be promising for sequential models.\nFinally, our proposed abstraction to shapes lends itself to _general_ applications in graph generative models beyond the molecular world.\n\nAcknowledgements\nJS and LH are thankful for valuable feedback from David Lüdke, John Rachwan, Tobias Schmidt, Simon Geisler, the DAML group, and Theis Lab. LH is supported by the Helmholtz Association under the joint research school “Munich School for Data Science - MUDS”.",
+      "citations": []
+    }
+  },
+  "references": {
+    "data": {},
+    "key_map": {}
+  }
+}

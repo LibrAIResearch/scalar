@@ -1,0 +1,797 @@
+{
+  "title": "LeFusion: Controllable Pathology Synthesis via Lesion-Focused Diffusion Models",
+  "abstract": "Patient data from real-world clinical practice often suffers from data\nscarcity and long-tail imbalances, leading to biased outcomes or algorithmic\nunfairness. This study addresses these challenges by generating\nlesion-containing image-segmentation pairs from lesion-free images. Previous\nefforts in medical imaging synthesis have struggled with separating lesion\ninformation from background, resulting in low-quality backgrounds and limited\ncontrol over the synthetic output. Inspired by diffusion-based image\ninpainting, we propose LeFusion, a lesion-focused diffusion model. By\nredesigning the diffusion learning objectives to focus on lesion areas, we\nsimplify the learning process and improve control over the output while\npreserving high-fidelity backgrounds by integrating forward-diffused background\ncontexts into the reverse diffusion process. Additionally, we tackle two major\nchallenges in lesion texture synthesis: 1) multi-peak and 2) multi-class\nlesions. We introduce two effective strategies: histogram-based texture control\nand multi-channel decomposition, enabling the controlled generation of\nhigh-quality lesions in difficult scenarios. Furthermore, we incorporate lesion\nmask diffusion, allowing control over lesion size, location, and boundary, thus\nincreasing lesion diversity. Validated on 3D cardiac lesion MRI and lung nodule\nCT datasets, LeFusion-generated data significantly improves the performance of\nstate-of-the-art segmentation models, including nnUNet and SwinUNETR. Code and\nmodel are available at https://github.com/M3DV/LeFusion.",
+  "paper_id": "http://arxiv.org/abs/2403.14066v2",
+  "markdown_content": "11institutetext: University of Science and Technology of China (USTC), Hefei, China\n\n22institutetext: Swiss Federal Institute of Technology Lausanne (EPFL), Lausanne, Switzerland\n\n# LeFusion: Synthesizing Myocardial Pathology on Cardiac MRI via Lesion-Focus Diffusion Models\n\nHantao Zhang\nThis work was conducted during the first author’s research internship at EPFL.11Jiancheng Yang\nCorresponding author:\nJiancheng Yang ( [jiancheng.yang@epfl.ch](https://ar5iv.org/html/jiancheng.yang@epfl.ch \"\")).22Shouhong Wan\n11Pascal Fua\n22\n\n###### Abstract\n\nData generated in clinical practice often exhibits biases, such as long-tail imbalance and algorithmic unfairness. This study aims to mitigate these challenges through data synthesis. Previous efforts in medical imaging synthesis have struggled with separating lesion information from background context, leading to difficulties in generating high-quality backgrounds and limited control over the synthetic output. Inspired by diffusion-based image inpainting, we propose LeFusion, lesion-focused diffusion models. By redesigning the diffusion learning objectives to concentrate on lesion areas, it simplifies the model learning process and enhance the controllability of the synthetic output, while preserving background by integrating forward-diffused background contexts into the reverse diffusion process. Furthermore, we generalize it to jointly handle multi-class lesions, and further introduce a generative model for lesion masks to increase synthesis diversity. Validated on the DE-MRI cardiac lesion segmentation dataset (Emidec), our methodology employs the popular nnUNet to demonstrate that the synthetic data make it possible to effectively enhance a state-of-the-art model. Code and model are available at [https://github.com/M3DV/LeFusion](https://github.com/M3DV/LeFusion \"\").\n\n###### Keywords:\n\ndata synthesis diffusion models cardiac MRI myocardial infarction no-reflow phenomena.\n\n## 1 Introduction\n\nIn most biomedical scenarios, the number of pathological subjects is significantly lower than that of normal ones. This discrepancy is primarily due to the naturally occurring distribution of patient data, which often exhibits a long-tail characteristic \\[ [32](https://ar5iv.org/html/2403.14066#bib.bib32 \"\"), [34](https://ar5iv.org/html/2403.14066#bib.bib34 \"\"), [25](https://ar5iv.org/html/2403.14066#bib.bib25 \"\"), [29](https://ar5iv.org/html/2403.14066#bib.bib29 \"\"), [30](https://ar5iv.org/html/2403.14066#bib.bib30 \"\")\\]. Furthermore, given potential biases in data collection, clinical data may be subject to algorithmic fairness \\[ [28](https://ar5iv.org/html/2403.14066#bib.bib28 \"\"), [3](https://ar5iv.org/html/2403.14066#bib.bib3 \"\")\\], security, and privacy issues \\[ [19](https://ar5iv.org/html/2403.14066#bib.bib19 \"\"), [20](https://ar5iv.org/html/2403.14066#bib.bib20 \"\")\\]. Thus, “synthetic data could be better than real data” \\[ [22](https://ar5iv.org/html/2403.14066#bib.bib22 \"\")\\].\n\nGenerative lesion synthesis is a promising area with applications across various medical modalities, achieving remarkable successes \\[ [12](https://ar5iv.org/html/2403.14066#bib.bib12 \"\")\\]. These include the synthesis of lung nodules \\[ [6](https://ar5iv.org/html/2403.14066#bib.bib6 \"\"), [11](https://ar5iv.org/html/2403.14066#bib.bib11 \"\"), [31](https://ar5iv.org/html/2403.14066#bib.bib31 \"\")\\] and COVID-19 lesions \\[ [16](https://ar5iv.org/html/2403.14066#bib.bib16 \"\")\\] in CT scans, colon polyp synthesis in colonoscopy \\[ [23](https://ar5iv.org/html/2403.14066#bib.bib23 \"\"), [18](https://ar5iv.org/html/2403.14066#bib.bib18 \"\"), [4](https://ar5iv.org/html/2403.14066#bib.bib4 \"\")\\], tumor cell synthesis in microscopy \\[ [8](https://ar5iv.org/html/2403.14066#bib.bib8 \"\")\\], synthesized brain tumors in MRI \\[ [1](https://ar5iv.org/html/2403.14066#bib.bib1 \"\")\\], diabetic lesion synthesis in retinal images \\[ [26](https://ar5iv.org/html/2403.14066#bib.bib26 \"\")\\], synthetic skeleton breaks in pulmonary airways and vessels \\[ [27](https://ar5iv.org/html/2403.14066#bib.bib27 \"\")\\], and synthetic tumors in the liver \\[ [17](https://ar5iv.org/html/2403.14066#bib.bib17 \"\")\\]. Although many types of generative method have been explored, such as VAEs \\[ [13](https://ar5iv.org/html/2403.14066#bib.bib13 \"\")\\], GANs \\[ [5](https://ar5iv.org/html/2403.14066#bib.bib5 \"\")\\], and diffusion models \\[ [7](https://ar5iv.org/html/2403.14066#bib.bib7 \"\")\\], they often fail at producing high-quality backgrounds outside the lesion areas. While lesions might appear similar across different cases, which greatly helps when training human doctors, the background can vary significantly due to diverse imaging conditions. This is challenging for generative models, especially when they can only be trained using limited amounts of data.\n\nRecent strategies we will refer to controlled lesion synthesis (CLS) \\[ [33](https://ar5iv.org/html/2403.14066#bib.bib33 \"\"), [9](https://ar5iv.org/html/2403.14066#bib.bib9 \"\")\\] offer an alternative. These methods start from readily available normal scans and synthesize lesions into them. This involves generating lesion masks and the textures to fill them. This targeted approach ensures high-quality background generation and controllability. Its usefulness has been demonstrated to model COVID-19 lesions \\[ [33](https://ar5iv.org/html/2403.14066#bib.bib33 \"\")\\] and liver tumors \\[ [9](https://ar5iv.org/html/2403.14066#bib.bib9 \"\")\\]. However, these methods are heavily hand-crafted, with heuristics that is hard to generalize.\n\nIn this study, we introduce a data-driven approach inspired by RePaint \\[ [15](https://ar5iv.org/html/2403.14066#bib.bib15 \"\")\\], a diffusion-based image inpainting technique that effectively preserves background by explicitly incorporating forward-diffused background contexts in reverse diffusion process, instead of using them as conditional inputs \\[ [21](https://ar5iv.org/html/2403.14066#bib.bib21 \"\")\\]. We developed lesion-focused diffusion models, named LeFusion, specifically tailored for the synthesis of lesion textures. Unlike in RePaint, we have redesigned the diffusion learning objectives to be learnable solely from the lesion, reducing the learning complexity and improving the controllability. Given the interconnectedness given various lesion types, we further propose a strategy for the joint modeling of multi-class lesions through multi-channel decomposition. Moreover, we develop a generalized diffusion model for lesion masks capable of producing a diverse set. This enhancement increases the synthesis diversity and effectively improves the performance of downstream applications.\n\nWe validate our methodology using the cardiac lesion segmentation dataset provided by Emidec \\[ [14](https://ar5iv.org/html/2403.14066#bib.bib14 \"\")\\], which focuses on two specific lesion types in DE-MRI: myocardial infarction (MI) and persistent microvascular obstruction (PMO). Our results demonstrate that the pipeline we propose not only facilitates effective data augmentation of pathological scans but also enables synthetic pathology from normal ones. We use the popular nnUNet \\[ [10](https://ar5iv.org/html/2403.14066#bib.bib10 \"\")\\] to show that the resulting synthetic images make it possible to effectively boost a state-of-the-art model.\n\n## 2 Method\n\n### 2.1 Background: Controlled Lesion Synthesis (CLS)\n\nPrior studies \\[ [33](https://ar5iv.org/html/2403.14066#bib.bib33 \"\"), [9](https://ar5iv.org/html/2403.14066#bib.bib9 \"\")\\] aim to split lesion synthesis into separate texture and mask generation processes. This distinction facilitates lesion generation across both normal and pathological scans by relying on prior clinical knowledge, focusing on the creation of lesion masks and their textural content. Yet, these approaches are predominantly manual. For texture synthesis, they \\[ [9](https://ar5iv.org/html/2403.14066#bib.bib9 \"\")\\] mainly depend on manually setting the texture’s grayscale values. Lesion shapes are crafted using morphological methods, involving the manual selection of ellipsoidal lesion masks and applying erosion and dilation techniques to soften the edges. This reliance on manual techniques restricts the advancement of controlled lesion synthesis.\n\n### 2.2 LeFusion: Lesion-Focus Diffusion Model\n\n![Refer to caption](https://ar5iv.org/html/2403.14066/assets/x1.png)Figure 1: Illustration of Lesion-Focus Diffusion Model. The top of the image illustrates the training process of the LeFusion, while the bottom depicts the inference process from the noise and the original image to the new image.\n\nCompared to previous handcrafted methods of controlled lesion synthesis \\[ [33](https://ar5iv.org/html/2403.14066#bib.bib33 \"\"), [9](https://ar5iv.org/html/2403.14066#bib.bib9 \"\")\\], we have developed a framework that learns the texture and shape of lesions from data, enabling adaptation to various datasets. Our approach utilizes a repainting method which, theoretically, ensures that background information remains undisturbed, contrasting with earlier techniques. Additionally, we have designed a novel method for generating lesion masks that can automatically produce a diverse range of shapes closely resembling lesion masks. It is important to note that our proposed LeFusion supports the generation of multiple types of lesion masks and textures at the same time.\n\n##### Disentangled Lesion and Background Generation.\n\nInspired by diffusion-based inpainting \\[ [15](https://ar5iv.org/html/2403.14066#bib.bib15 \"\")\\], we aim to decouple the generation of lesion and background. As demonstrated in Fig. [1](https://ar5iv.org/html/2403.14066#S2.F1 \"Figure 1 ‣ 2.2 LeFusion: Lesion-Focus Diffusion Model ‣ 2 Method ‣ LeFusion: Synthesizing Myocardial Pathology on Cardiac MRI via Lesion-Focus Diffusion Models\"), inpainting aims to predict the missing parts of an image, particularly lesions, using a specified mask region as a condition. In this paper, we employ diffusion models \\[ [24](https://ar5iv.org/html/2403.14066#bib.bib24 \"\")\\] as a generative method. The inference process involves sampling a random noise vector xT∼𝒩​(0,1)similar-tosubscript𝑥𝑇𝒩01x\\_{T}\\\\sim\\\\mathcal{N}(0,1) and gradually denoising it until achieving a high-quality output image x0subscript𝑥0x\\_{0}. We refer to the original image with one channel as x^0∈ℝD×H×W×1subscript^𝑥0superscriptℝ𝐷𝐻𝑊1\\\\hat{x}\\_{0}\\\\in\\\\mathbb{R}^{D\\\\times H\\\\times W\\\\times 1}, where D𝐷D signifies the depth, H𝐻H represents the height, and W𝑊W denotes the width. For the diffusion model’s reverse step from xtsubscript𝑥𝑡x\\_{t} to xt−1subscript𝑥𝑡1x\\_{t-1}, we decouple it into two components: lesion and background, as illustrated in the following equation. Here, Mfsubscript𝑀𝑓M\\_{f} and Mbsubscript𝑀𝑏M\\_{b} respectively represent the Lesion Foreground Mask and Background Mask. lt−1subscript𝑙𝑡1l\\_{t-1} is obtained from xtsubscript𝑥𝑡x\\_{t} through the reverse diffusion process pθsubscript𝑝𝜃p\\_{\\\\theta} utilizing a 3D U-Net, and x^t−1subscript^𝑥𝑡1\\\\hat{x}\\_{t-1} is derived from x^0subscript^𝑥0\\\\hat{x}\\_{0} through the forward diffusion process q𝑞q.\n\n|     |     |     |     |\n| --- | --- | --- | --- |\n|  | xt−1=lt−1⊙Mf+x^t−1⊙Mbsubscript𝑥𝑡1direct-productsubscript𝑙𝑡1subscript𝑀𝑓direct-productsubscript^𝑥𝑡1subscript𝑀𝑏{x\\_{t-1}}=l\\_{t-1}\\\\odot M\\_{f}+\\\\hat{x}\\_{t-1}\\\\odot M\\_{b} |  | (1) |\n\n##### Making Diffusion Model Lesion-Focus.\n\nHowever, the above method can not ensure the Denoised Output lt−1subscript𝑙𝑡1l\\_{t-1} focuses on the lesion area. Hence, we introduced a lesion focus loss into our model’s training process. The general training strategy for diffusion models starts with the original image x^0subscript^𝑥0\\\\hat{x}\\_{0}, continuously perturbing it by adding Gaussian noise with increasing variance over T𝑇T time steps. Subsequently, a neural network is trained, conditioned on the noised version of the image at time step t𝑡t, as well as the time step itself, to learn the noise distribution that perturbs the image, allowing the data distribution p​(xt−1\\|xt)𝑝conditionalsubscript𝑥𝑡1subscript𝑥𝑡p(x\\_{t-1}\\|x\\_{t}) at time t−1𝑡1t-1 to be inferred. During this training phase, the mask m1^^subscript𝑚1\\\\hat{m\\_{1}} is applied to ensure that the loss is calculated exclusively within the masked region.\nThe training objective of our diffusion model is defined as follows, where\n𝜺∈ℝD×H×W×1𝜺superscriptℝ𝐷𝐻𝑊1\\\\boldsymbol{\\\\varepsilon}\\\\in\\\\mathbb{R}^{D\\\\times H\\\\times W\\\\times 1} signifies the channel-wise noise sourced from a Gaussian distribution.\n\n|     |     |     |     |\n| --- | --- | --- | --- |\n|  | 𝔼x^0,ϵ∼𝒩​(0,1),t​\\[‖m1^​ϵ−m1^​pθ​(x^t,t)‖22\\]subscript𝔼formulae-sequencesimilar-tosubscript^𝑥0italic-ϵ𝒩01𝑡delimited-\\[\\]superscriptsubscriptnorm^subscript𝑚1italic-ϵ^subscript𝑚1subscript𝑝𝜃subscript^𝑥𝑡𝑡22\\\\mathbb{E}\\_{\\\\hat{x}\\_{0},\\\\epsilon\\\\sim\\\\mathcal{N}(0,1),t}\\\\left\\[\\\\left\\\\\\|\\\\hat{m\\_{1}}\\\\epsilon-\\\\hat{m\\_{1}}p\\_{\\\\theta}\\\\left(\\\\hat{x}\\_{t},t\\\\right)\\\\right\\\\\\|\\_{2}^{2}\\\\right\\] |  | (2) |\n\n##### Joint Modeling of Multi-Class Lesions.\n\nThe lesion-focused approach primarily targets the generation of single lesions. However, in many medical fields, there is a necessity to model multi-class lesions, such as MI and PMO in cardiac MRI studies. This approach does not capture the correlations between different lesions. To generate textures for multiple lesions simultaneously, we employ a joint modeling strategy for multi-class lesions, with each channel corresponding to a different lesion type. We expand the input image x^0∈ℝD×H×W×1subscript^𝑥0superscriptℝ𝐷𝐻𝑊1\\\\hat{x}\\_{0}\\\\in\\\\mathbb{R}^{D\\\\times H\\\\times W\\\\times 1} along the channel dimension based on the number of lesions (specifically 2 for this study) to obtain x^t∈ℝD×H×W×2subscript^𝑥𝑡superscriptℝ𝐷𝐻𝑊2\\\\hat{x}\\_{t}\\\\in\\\\mathbb{R}^{D\\\\times H\\\\times W\\\\times 2}. The training objective of our diffusion model is defined as follows, where n=2𝑛2n=2 represents the total number of lesions, and 𝜺∈ℝD×H×W×2𝜺superscriptℝ𝐷𝐻𝑊2\\\\boldsymbol{\\\\varepsilon}\\\\in\\\\mathbb{R}^{D\\\\times H\\\\times W\\\\times 2} signifies the channel-wise noise sourced from a Gaussian distribution. Each m^isubscript^𝑚𝑖\\\\hat{m}\\_{i} is an element of Mfsubscript𝑀𝑓M\\_{f}, with i𝑖i varying from 1 to n𝑛n.\n\n|     |     |     |     |\n| --- | --- | --- | --- |\n|  | 𝔼x^0,ϵ∼𝒩​(0,1),t​∑i=1n\\[‖mi^​ϵ−mi^​pθ​(x^t,t)‖22\\]subscript𝔼formulae-sequencesimilar-tosubscript^𝑥0italic-ϵ𝒩01𝑡superscriptsubscript𝑖1𝑛delimited-\\[\\]superscriptsubscriptnorm^subscript𝑚𝑖italic-ϵ^subscript𝑚𝑖subscript𝑝𝜃subscript^𝑥𝑡𝑡22\\\\mathbb{E}\\_{\\\\hat{x}\\_{0},\\\\epsilon\\\\sim\\\\mathcal{N}(0,1),t}\\\\sum\\_{i=1}^{n}\\\\left\\[\\\\left\\\\\\|\\\\hat{m\\_{i}}\\\\epsilon-\\\\hat{m\\_{i}}p\\_{\\\\theta}\\\\left(\\\\hat{x}\\_{t},t\\\\right)\\\\right\\\\\\|\\_{2}^{2}\\\\right\\] |  | (3) |\n\n### 2.3 Diffusion-Based Mask Synthesis\n\n![Refer to caption](https://ar5iv.org/html/2403.14066/assets/x2.png)Figure 2: Illustration of Diffusion-Based Lesion Mask Synthesis.\n\nIn this work, we introduce a novel framework for mask diffusion, named DiffMask. This innovative approach leverages the principles of diffusion models to specifically address the challenges of generating and refining masks in image and volume data. As shown in Fig. [2](https://ar5iv.org/html/2403.14066#S2.F2 \"Figure 2 ‣ 2.3 Diffusion-Based Mask Synthesis ‣ 2 Method ‣ LeFusion: Synthesizing Myocardial Pathology on Cardiac MRI via Lesion-Focus Diffusion Models\"), we introduce the mask Mm∈ℝD×H×W×1subscript𝑀𝑚superscriptℝ𝐷𝐻𝑊1M\\_{m}\\\\in\\\\mathbb{R}^{D\\\\times H\\\\times W\\\\times 1} to constrain the generation of the lesion masks within the physiological structures where lesions are likely to occur. Our approach employs multi-channel modeling to capture the shape correlations between multiple lesion masks and their spatial distribution and causal relationships (such as containment). Each channel is dedicated to generating a mask shape for a specific lesion, and we apply a smoothing kernel as a post-processing step to smooth the generated masks seamlessly. For the diffusion model’s reverse step from mtsubscript𝑚𝑡m\\_{t} to mt−1subscript𝑚𝑡1m\\_{t-1}, the training objective of our diffusion model is defined as follows, where n𝑛n represents the number of lesion types and Misubscript𝑀𝑖M\\_{i} belongs to Mmsubscript𝑀𝑚M\\_{m} for i=1,2𝑖12i=1,2:\n\n|     |     |     |     |\n| --- | --- | --- | --- |\n|  | 𝔼m0,ϵ∼𝒩​(0,1),t​∑i=1n\\[‖Mi​ϵ−Mi​pθ​(mt,t)‖22\\]subscript𝔼formulae-sequencesimilar-tosubscript𝑚0italic-ϵ𝒩01𝑡superscriptsubscript𝑖1𝑛delimited-\\[\\]superscriptsubscriptnormsubscript𝑀𝑖italic-ϵsubscript𝑀𝑖subscript𝑝𝜃subscript𝑚𝑡𝑡22\\\\mathbb{E}\\_{m\\_{0},\\\\epsilon\\\\sim\\\\mathcal{N}(0,1),t}\\\\sum\\_{i=1}^{n}\\\\left\\[\\\\left\\\\\\|M\\_{i}\\\\epsilon-M\\_{i}p\\_{\\\\theta}\\\\left(m\\_{t},t\\\\right)\\\\right\\\\\\|\\_{2}^{2}\\\\right\\] |  | (4) |\n\n## 3 Experiments\n\n### 3.1 Setup\n\n##### Dataset.\n\nThe Emidec dataset \\[ [14](https://ar5iv.org/html/2403.14066#bib.bib14 \"\")\\] consists of examinations featuring DE-MRI in a short-axis orientation. This dataset provides access to fully labeled data comprising a total of 100 cases, including 33 normal (N) and 67 pathological (P) cases. The annotations within the dataset cover five classes: background, left ventricle (LV), myocardium (Myo), myocardial infarction (MI), and persistent microvascular obstruction (PMO). We split the 67 pathological cases of the Emidec dataset into 57 for training and 10 for testing. The 57 pathological cases (P) are used to train the data synthesis model. In the downstream evaluation (Sec. 3.2), we use those models to synthesize pathological cases based on both 57 pathological (P) and 33 normal (N) as the downstream training set.\n\n##### Method Comparison.\n\nThe following image synthesis algorithms are compared with the proposed LeFusion-S/J.\n\nHand-Crafted \\[ [9](https://ar5iv.org/html/2403.14066#bib.bib9 \"\")\\]. The morphology of the lesion is represented by the overlapping of multiple ellipsoidal lesion masks, with the application of erosion and dilation techniques to blur the shapes. The texture is approximated using Gaussian noise and softened through interpolation and Gaussian filtering.\n\nRePaint \\[ [15](https://ar5iv.org/html/2403.14066#bib.bib15 \"\")\\]. This approach removes the lesion mask from the image and then fills in the lesion texture through the process depicted in Fig. [1](https://ar5iv.org/html/2403.14066#S2.F1 \"Figure 1 ‣ 2.2 LeFusion: Lesion-Focus Diffusion Model ‣ 2 Method ‣ LeFusion: Synthesizing Myocardial Pathology on Cardiac MRI via Lesion-Focus Diffusion Models\"). The model employs global training loss, which lacks the capability to focus on lesion information. Due to the absence of guidance from lesion category information, it is unable to specify corresponding lesions and is confined to simulating the generation of single-class lesions\n\nCond-Diffusion \\[ [7](https://ar5iv.org/html/2403.14066#bib.bib7 \"\"), [21](https://ar5iv.org/html/2403.14066#bib.bib21 \"\")\\].\nBesides the method described above, which removes the lesion mask from the image and then fills in the texture, another approach involves using the lesion mask and background image information as conditional inputs \\[ [21](https://ar5iv.org/html/2403.14066#bib.bib21 \"\")\\] to a diffusion model \\[ [7](https://ar5iv.org/html/2403.14066#bib.bib7 \"\")\\]. Specifically, given a pair of an image x0subscript𝑥0x\\_{0} and the mask of its lesion region m𝑚m, the diffusion model is conditioned on both the mask m𝑚m and the healthy region xhealth=(1−m)⊙x0subscript𝑥healthdirect-product1𝑚subscript𝑥0x\\_{\\\\text{health}}=(1-m)\\\\odot x\\_{0}. The three features x0subscript𝑥0x\\_{0}, m𝑚m, and xhealthsubscript𝑥healthx\\_{\\\\text{health}} are stacked together and fed into a 3D U-Net to infer the data distribution p​(xt−1\\|xt)𝑝conditionalsubscript𝑥𝑡1subscript𝑥𝑡p(x\\_{t-1}\\|x\\_{t}) at time t−1𝑡1t-1 from t𝑡t. The downside of this method is that it disrupts the background information. By directly using multiple masks as conditional inputs, it fails to control the corresponding categories and can only model the generation of single-class lesions.\n\nLeFusion-S/J (Ours).\nFor each lesion, individual models are trained separately for multiple texture generators, and then lesion texture information is filled in for each lesion location separately. The disadvantage is the lack of modeling for the correlation between textures across different lesions. Lesion-J is a generalized version to model multi-class lesions jointly.\n\nTable 1: Downstream Cardiac Segmentation Dice (↑↑\\\\uparrow) from DE-MRI on Emidec Dataset \\[ [14](https://ar5iv.org/html/2403.14066#bib.bib14 \"\")\\]. P: real pathological cases. P’/N’: synthetic pathological cases from pathological/normal cases, using various synthetic approaches. N”: more synthetic data than N’. LeFusion-S/J: seperate / joint modeling of multi-class lesions. The bold denote best performances on lesion regison, and the red are those with significantly adverse effects compared to the baseline.\n\n|     |     |     |     |     |     |\n| --- | --- | --- | --- | --- | --- |\n| Methods | Training | Normal Region | Lesion Region |\n| LV | Myo | MI | PMO |\n| nnU-Net \\[ [10](https://ar5iv.org/html/2403.14066#bib.bib10 \"\")\\] Baseline | P | 94.33 | 82.43 | 69.67 | 36.89 |\n| Texture Synthesis with Real Masks on P’ |\n| Hand-Crafted \\[ [9](https://ar5iv.org/html/2403.14066#bib.bib9 \"\")\\] | P+P’ | 94.69 | 82.62 | 69.60 | 36.06 |\n| Cond-Diffusion \\[ [7](https://ar5iv.org/html/2403.14066#bib.bib7 \"\"), [21](https://ar5iv.org/html/2403.14066#bib.bib21 \"\")\\] | P+P’ | 94.13 | 80.22 | 66.89 | 37.76 |\n| RePaint \\[ [15](https://ar5iv.org/html/2403.14066#bib.bib15 \"\")\\] | P+P’ | 94.72 | 82.55 | 69.14 | 28.93 |\n| LeFusion-S (Ours) | P+P’ | 94.59 | 82.20 | 69.88 | 34.79 |\n| LeFusion-J (Ours) | P+P’ | 94.63 | 82.38 | 69.95 | 38.01 |\n| Texture Synthesis with Hand-Crafted Synthetic Masks \\[ [9](https://ar5iv.org/html/2403.14066#bib.bib9 \"\")\\] on N’ |\n| Hand-Crafted \\[ [9](https://ar5iv.org/html/2403.14066#bib.bib9 \"\")\\] | P+N’ | 94.31 | 80.77 | 68.19 | 35.73 |\n| Cond-Diffusion \\[ [7](https://ar5iv.org/html/2403.14066#bib.bib7 \"\"), [21](https://ar5iv.org/html/2403.14066#bib.bib21 \"\")\\] | P+N’ | 94.08 | 79.69 | 67.41 | 31.03 |\n| LeFusion-S (Ours) | P+N’ | 94.45 | 81.82 | 69.17 | 37.18 |\n| LeFusion-J (Ours) | P+N’ | 94.66 | 82.40 | 69.87 | 37.31 |\n| Enhanced with Diffusion-Based Synthetic Mask (DiffMask) |\n| LeFusion-J+DiffMask (Ours) | P+N’ | 94.55 | 82.18 | 69.81 | 40.62 |\n| LeFusion-J+DiffMask (Ours) | P+N” | 94.37 | 82.24 | 70.17 | 42.44 |\n| LeFusion-J+DiffMask (Ours) | P+P’+N” | 94.43 | 82.24 | 70.34 | 43.54 |\n\nTable 2: Synthesis Image Quality Assessment from DE-MRI on Emidec Dataset \\[ [14](https://ar5iv.org/html/2403.14066#bib.bib14 \"\")\\]. We compare the differences in image similarity between synthetic pathological cases generated by different methods given real pathological cases.\n\n|     |     |     |     |     |     |     |\n| --- | --- | --- | --- | --- | --- | --- |\n| Methods | MI | PMO | Avg. |\n| PSNR ↑↑\\\\uparrow | SSIM ↑↑\\\\uparrow | PSNR ↑↑\\\\uparrow | SSIM ↑↑\\\\uparrow | PSNR ↑↑\\\\uparrow | SSIM ↑↑\\\\uparrow |\n| Hand-Crafted \\[ [9](https://ar5iv.org/html/2403.14066#bib.bib9 \"\")\\] | 9.39 | 8.30 | 7.63 | 9.15 | 8.516 | 8.70 |\n| Cond-Diffusion \\[ [7](https://ar5iv.org/html/2403.14066#bib.bib7 \"\"), [21](https://ar5iv.org/html/2403.14066#bib.bib21 \"\")\\] | 13.25 | 46.92 | 8.00 | 9.23 | 10.62 | 28.07 |\n| RePaint \\[ [15](https://ar5iv.org/html/2403.14066#bib.bib15 \"\")\\] | 19.81 | 80.68 | 15.23 | 70.27 | 17.52 | 75.47 |\n| LeFusion-S (Ours) | 25.65 | 91.78 | 27.71 | 89.42 | 26.68 | 90.60 |\n| LeFusion-J (Ours) | 28.30 | 91.41 | 35.23 | 93.23 | 31.77 | 92.32 |\n\n### 3.2 Improving Cardiac Segmentation with Synthetic Data\n\nWe show that LeFusion is effective as augmenting training databases for the purpose of training nnUNet \\[ [10](https://ar5iv.org/html/2403.14066#bib.bib10 \"\")\\] to perform cardiac segmentation. We use the following synthetic subsets using various synthesis methods:\n\nP’: 57×157157\\\\times 1 synthetic cases from the 57 real pathological cases P;\nN’: 33×233233\\\\times 2 synthetic cases from the 33 normal cases N;\nN”: 33×533533\\\\times 5 synthetic cases from the 33 normal cases N.\n\nWe then use combinations of these subsets to train nnU-Net. The results are reported in Tab. [1](https://ar5iv.org/html/2403.14066#S3.T1 \"Table 1 ‣ Method Comparison. ‣ 3.1 Setup ‣ 3 Experiments ‣ LeFusion: Synthesizing Myocardial Pathology on Cardiac MRI via Lesion-Focus Diffusion Models\") in terms of the Dice (0-100, higher is better).\n\nIn Tab. [1](https://ar5iv.org/html/2403.14066#S3.T1 \"Table 1 ‣ Method Comparison. ‣ 3.1 Setup ‣ 3 Experiments ‣ LeFusion: Synthesizing Myocardial Pathology on Cardiac MRI via Lesion-Focus Diffusion Models\")’s first set, we apply texture synthesis with real masks. The Hand-Crafted \\[ [9](https://ar5iv.org/html/2403.14066#bib.bib9 \"\")\\] produces textures that differ from real textures, leading to a decrease in baseline performance. Cond-Diffusion \\[ [7](https://ar5iv.org/html/2403.14066#bib.bib7 \"\"), [21](https://ar5iv.org/html/2403.14066#bib.bib21 \"\")\\] disrupts background structure, lowering Myo’s Dice and blurring lesion categories, decreasing MI’s performance. RePaint \\[ [15](https://ar5iv.org/html/2403.14066#bib.bib15 \"\")\\], focusing on global information, struggles to generate textures that conform to lesion characteristics, resulting in a significant decrease in the Dice for PMO lesions. LeFusion-S models the two lesions separately, ignoring the correlation between lesions, which leads to improved accuracy for MI but decreased accuracy for PMO lesions. In contrast, our proposed LeFusion-J achieves superior results; For the second group, we expanded the normal data utilizing texture synthesis with hand-crafted synthetic masks. Due to RePaint \\[ [15](https://ar5iv.org/html/2403.14066#bib.bib15 \"\")\\]’s inability to distinguish between multiple lesion categories, we did not repeat experiments for it. From the experiments, we observed results similar to those of the first group; For the last, we evaluated our proposed lesion mask synthesis. Our method significantly improved the performance for both MI and PMO. Additionally, as data volume expanded, downstream segmentation Dice consistently improved.\n\n### 3.3 Synthesis Quality Assessment\n\n![Refer to caption](https://ar5iv.org/html/2403.14066/assets/x3.png)Figure 3: Visualization of Synthetic Images Given Lesion Masks. Masks are real one on the pathological, and synthetic on the normal. Our LeFusion are compared with Hand-Crafted \\[ [9](https://ar5iv.org/html/2403.14066#bib.bib9 \"\")\\], Cond-Diffusion \\[ [7](https://ar5iv.org/html/2403.14066#bib.bib7 \"\"), [21](https://ar5iv.org/html/2403.14066#bib.bib21 \"\")\\] and RePaint \\[ [15](https://ar5iv.org/html/2403.14066#bib.bib15 \"\")\\].![Refer to caption](https://ar5iv.org/html/2403.14066/assets/x4.png)Figure 4: Visualization of Real / Synthetic Lesion Masks. From left to right, the images respectively show the real pathological mask, hand-crafted \\[ [9](https://ar5iv.org/html/2403.14066#bib.bib9 \"\")\\] synthesized mask, and our diffusion-generated mask.\n\n##### Image Quality.\n\nAs shown in Tab. [2](https://ar5iv.org/html/2403.14066#S3.T2 \"Table 2 ‣ Method Comparison. ‣ 3.1 Setup ‣ 3 Experiments ‣ LeFusion: Synthesizing Myocardial Pathology on Cardiac MRI via Lesion-Focus Diffusion Models\"), we selected Peak Signal-to-Noise Ratio (PSNR) and Structural Similarity Index Measure (SSIM) to calculate the similarity between synthetic pathological cases generated by different methods and real pathological cases. Our proposed LeFusion-J achieved the highest average PSNR and SSIM. Fig. [3](https://ar5iv.org/html/2403.14066#S3.F3 \"Figure 3 ‣ 3.3 Synthesis Quality Assessment ‣ 3 Experiments ‣ LeFusion: Synthesizing Myocardial Pathology on Cardiac MRI via Lesion-Focus Diffusion Models\") displays the synthesized visualization of two lesions: MI (blue) and PMO (red). The Cond-Diffusion method \\[ [7](https://ar5iv.org/html/2403.14066#bib.bib7 \"\"), [21](https://ar5iv.org/html/2403.14066#bib.bib21 \"\")\\] disrupts the background structure. The lesions generated by Hand-Crafted \\[ [9](https://ar5iv.org/html/2403.14066#bib.bib9 \"\")\\] and RePaint \\[ [15](https://ar5iv.org/html/2403.14066#bib.bib15 \"\")\\] fail to capture texture information, such as the grayscale variations characteristic of the lesions. In contrast, LeFusion-J more accurately reflects the textures of both lesion types and, compared to LeFusion-S, results in smoother transitions at the boundaries between the two lesions and with the background. More visualizations can be found in the supplementary materials.\n\n##### Mask Quality.\n\nWe also visualize synthetic lesion masks, as shown in Fig. [4](https://ar5iv.org/html/2403.14066#S3.F4 \"Figure 4 ‣ 3.3 Synthesis Quality Assessment ‣ 3 Experiments ‣ LeFusion: Synthesizing Myocardial Pathology on Cardiac MRI via Lesion-Focus Diffusion Models\"). Compared to the hand-crafted masks \\[ [9](https://ar5iv.org/html/2403.14066#bib.bib9 \"\")\\], our diffusion-generated masks are closer to the real masks and exhibit a more diverse range of shape patterns.\n\n## 4 Discussion & Conclusion\n\n##### Concurrent Work.\n\nA recent study \\[ [2](https://ar5iv.org/html/2403.14066#bib.bib2 \"\")\\] employs conditional diffusion \\[ [7](https://ar5iv.org/html/2403.14066#bib.bib7 \"\"), [21](https://ar5iv.org/html/2403.14066#bib.bib21 \"\")\\] to synthesize abdomen tumors, building on the controlled lesion synthesis framework \\[ [33](https://ar5iv.org/html/2403.14066#bib.bib33 \"\"), [9](https://ar5iv.org/html/2403.14066#bib.bib9 \"\")\\]. In their approach, the diffusion process is not lesion-focus, learning both the background and the lesion, with the lesion mask and the background image (minus the lesion part) serving as conditional inputs. The preservation of background can not be theoretically guaranteed. Despite differences in applications and implementation details, e.g. the use of encoded latent diffusion \\[ [21](https://ar5iv.org/html/2403.14066#bib.bib21 \"\")\\], this approach is essentially Cond-Diffusion as described. From our findings, it struggles to ensure high-quality background generation (Fig. [3](https://ar5iv.org/html/2403.14066#S3.F3 \"Figure 3 ‣ 3.3 Synthesis Quality Assessment ‣ 3 Experiments ‣ LeFusion: Synthesizing Myocardial Pathology on Cardiac MRI via Lesion-Focus Diffusion Models\")), and may potentially lead to adverse effects in downstream applications (Tab. [1](https://ar5iv.org/html/2403.14066#S3.T1 \"Table 1 ‣ Method Comparison. ‣ 3.1 Setup ‣ 3 Experiments ‣ LeFusion: Synthesizing Myocardial Pathology on Cardiac MRI via Lesion-Focus Diffusion Models\")).\n\n##### Conclusion.\n\nIn conclusion, we introduce LeFusion, a novel lesion-focused diffusion models capable by recalibrating the diffusion learning objectives to target lesion areas. It preserves background by integrating forward-diffused background contexts into the reverse diffusion process. Our methodology is extended to handle multi-class lesions jointly, and further enhanced by a generative model for lesion masks, significantly broadening the diversity of our synthetic data. We demonstrate that synthetic data generated by our method can effectively boost the performance of a state-of-the-art network like nnU-Net.\n\n#### 4.0.1 Acknowledgment.\n\nThis research was supported in part by a Swiss National Science Foundation grant.\n\n## References\n\n- \\[1\\]\nBillot, B., Greve, D.N., Puonti, O., Thielscher, A., Van Leemput, K., Fischl,\nB., Dalca, A.V., Iglesias, J.E., et al.: Synthseg: Segmentation of brain mri\nscans of any contrast and resolution without retraining. Medical Image\nAnalysis 86, 102789 (2023)\n\n- \\[2\\]\nChen, Q., Chen, X., Song, H., Xiong, Z., Yuille, A., Wei, C., Zhou, Z.: Towards\ngeneralizable tumor synthesis. arXiv preprint arXiv:2402.19470 (2024)\n\n- \\[3\\]\nChen, R.J., Wang, J.J., Williamson, D.F., Chen, T.Y., Lipkova, J., Lu, M.Y.,\nSahai, S., Mahmood, F.: Algorithmic fairness in artificial intelligence for\nmedicine and healthcare. Nature biomedical engineering 7(6),\n719–742 (2023)\n\n- \\[4\\]\nDu, Y., Jiang, Y., Tan, S., Wu, X., Dou, Q., Li, Z., Li, G., Wan, X.: Arsdm:\ncolonoscopy images synthesis with adaptive refinement semantic diffusion\nmodels. In: International conference on medical image computing and\ncomputer-assisted intervention. pp. 339–349. Springer (2023)\n\n- \\[5\\]\nGoodfellow, I., Pouget-Abadie, J., Mirza, M., Xu, B., Warde-Farley, D., Ozair,\nS., Courville, A., Bengio, Y.: Generative adversarial networks.\nCommunications of the ACM 63(11), 139–144 (2020)\n\n- \\[6\\]\nHan, C., Kitamura, Y., Kudo, A., Ichinose, A., Rundo, L., Furukawa, Y.,\nUmemoto, K., Li, Y., Nakayama, H.: Synthesizing diverse lung nodules wherever\nmassively: 3d multi-conditional gan-based ct image augmentation for object\ndetection. In: International Conference on 3D Vision. pp. 729–737. IEEE\n(2019)\n\n- \\[7\\]\nHo, J., Jain, A., Abbeel, P.: Denoising diffusion probabilistic models.\nAdvances in Neural Information Processing Systems 33, 6840–6851\n(2020)\n\n- \\[8\\]\nHorvath, I., Paetzold, J., Schoppe, O., Al-Maskari, R., Ezhov, I., Shit, S.,\nLi, H., Ertürk, A., Menze, B.: Metgan: generative tumour inpainting and\nmodality synthesis in light sheet microscopy. In: IEEE Winter Conference on\nApplications of Computer Vision. pp. 227–237 (2022)\n\n- \\[9\\]\nHu, Q., Chen, Y., Xiao, J., Sun, S., Chen, J., Yuille, A.L., Zhou, Z.:\nLabel-free liver tumor segmentation. In: Conference on Computer Vision and\nPattern Recognition. pp. 7422–7432 (2023)\n\n- \\[10\\]\nIsensee, F., Jaeger, P.F., Kohl, S.A., Petersen, J., Maier-Hein, K.H.: nnu-net:\na self-configuring method for deep learning-based biomedical image\nsegmentation. Nature methods 18(2), 203–211 (2021)\n\n- \\[11\\]\nJin, Q., Cui, H., Sun, C., Meng, Z., Su, R.: Free-form tumor synthesis in\ncomputed tomography images via richer generative adversarial network.\nKnowledge-Based Systems 218, 106753 (2021)\n\n- \\[12\\]\nKhader, F., Müller-Franzes, G., Tayebi Arasteh, S., Han, T., Haarburger,\nC., Schulze-Hagen, M., Schad, P., Engelhardt, S., Baeßler, B., Foersch,\nS., et al.: Denoising diffusion probabilistic models for 3d medical image\ngeneration. Scientific Reports 13(1),  7303 (2023)\n\n- \\[13\\]\nKingma, D.P., Welling, M.: Auto-encoding variational bayes. arXiv Preprint\n(2013)\n\n- \\[14\\]\nLalande, A., Chen, Z., Pommier, T., Decourselle, T., Qayyum, A., Salomon, M.,\nGinhac, D., Skandarani, Y., Boucher, A., Brahim, K., et al.: Deep learning\nmethods for automatic evaluation of delayed enhancement-mri. the results of\nthe emidec challenge. Medical Image Analysis 79, 102428 (2022)\n\n- \\[15\\]\nLugmayr, A., Danelljan, M., Romero, A., Yu, F., Timofte, R., Van Gool, L.:\nRepaint: Inpainting using denoising diffusion probabilistic models. In:\nConference on Computer Vision and Pattern Recognition. pp. 11461–11471\n(2022)\n\n- \\[16\\]\nLyu, F., Ye, M., Carlsen, J.F., Erleben, K., Darkner, S., Yuen, P.C.:\nPseudo-label guided image synthesis for semi-supervised covid-19 pneumonia\ninfection segmentation. IEEE Transactions on Medical Imaging 42(3),\n797–809 (2022)\n\n- \\[17\\]\nLyu, F., Ye, M., Ma, A.J., Yip, T.C.F., Wong, G.L.H., Yuen, P.C.: Learning from\nsynthetic ct images via test-time training for liver tumor segmentation. IEEE\nTransactions on Medical Imaging 41(9), 2510–2520 (2022)\n\n- \\[18\\]\nPishva, A.K., Thambawita, V., Torresen, J., Hicks, S.A.: Repolyp: A framework\nfor generating realistic colon polyps with corresponding segmentation masks\nusing diffusion models. In: 2023 IEEE 36th International Symposium on\nComputer-Based Medical Systems (CBMS). pp. 47–52. IEEE (2023)\n\n- \\[19\\]\nPrice, W.N., Cohen, I.G.: Privacy in the age of medical big data. Nature\nmedicine 25(1), 37–43 (2019)\n\n- \\[20\\]\nQayyum, A., Qadir, J., Bilal, M., Al-Fuqaha, A.: Secure and robust machine\nlearning for healthcare: A survey. IEEE Reviews in Biomedical Engineering\n14, 156–180 (2020)\n\n- \\[21\\]\nRombach, R., Blattmann, A., Lorenz, D., Esser, P., Ommer, B.: High-resolution\nimage synthesis with latent diffusion models. In: Conference on Computer\nVision and Pattern Recognition. pp. 10684–10695 (2022)\n\n- \\[22\\]\nSavage, N.: Synthetic data could be better than real data. Nature (2023),\n[https://doi.org/10.1038/d41586-023-01445-8](https://doi.org/10.1038/d41586-023-01445-8 \"\")\n- \\[23\\]\nShin, Y., Qadir, H.A., Balasingham, I.: Abnormal colon polyp image synthesis\nusing conditional adversarial networks for improved detection performance.\nIEEE Access 6, 56007–56017 (2018)\n\n- \\[24\\]\nSohl-Dickstein, J., Weiss, E., Maheswaranathan, N., Ganguli, S.: Deep\nunsupervised learning using nonequilibrium thermodynamics. In: International\nconference on machine learning. pp. 2256–2265. PMLR (2015)\n\n- \\[25\\]\nSuriyakumar, V.M., Papernot, N., Goldenberg, A., Ghassemi, M.: Chasing your\nlong tails: Differentially private prediction in health care settings. In:\nProceedings of the 2021 ACM Conference on Fairness, Accountability, and\nTransparency. pp. 723–734 (2021)\n\n- \\[26\\]\nWang, H., Zhou, Y., Zhang, J., Lei, J., Sun, D., Xu, F., Xu, X.: Anomaly\nsegmentation in retinal images with poisson-blending data augmentation.\nMedical Image Analysis 81, 102534 (2022)\n\n- \\[27\\]\nWeng, Z., Yang, J., Liu, D., Cai, W.: Topology repairing of disconnected\npulmonary airways and vessels: Baselines and a dataset. In: Conference on\nMedical Image Computing and Computer Assisted Intervention. pp. 382–392.\nSpringer (2023)\n\n- \\[28\\]\nXu, J., Xiao, Y., Wang, W.H., Ning, Y., Shenkman, E.A., Bian, J., Wang, F.:\nAlgorithmic fairness in computational medicine. EBioMedicine 84\n(2022)\n\n- \\[29\\]\nYang, J., Shi, R., Ni, B.: Medmnist classification decathlon: A lightweight\nautoml benchmark for medical image analysis. In: International Symposium on\nBiomedical Imaging. pp. 191–195. IEEE (2021)\n\n- \\[30\\]\nYang, J., Shi, R., Wei, D., Liu, Z., Zhao, L., Ke, B., Pfister, H., Ni, B.:\nMedmnist v2-a large-scale lightweight benchmark for 2d and 3d biomedical\nimage classification. Scientific Data 10(1),  41 (2023)\n\n- \\[31\\]\nYang, J., Liu, S., Grbic, S., Setio, A.A.A., Xu, Z., Gibson, E., Chabin, G.,\nGeorgescu, B., Laine, A.F., Comaniciu, D.: Class-aware adversarial lung\nnodule synthesis in ct images. In: International Symposium on Biomedical\nImaging. pp. 1348–1352. IEEE (2019)\n\n- \\[32\\]\nYang, Z., Pan, J., Yang, Y., Shi, X., Zhou, H.Y., Zhang, Z., Bian, C.: Proco:\nPrototype-aware contrastive learning for long-tailed medical image\nclassification. In: International Conference on Medical Image Computing and\nComputer-Assisted Intervention. pp. 173–182. Springer (2022)\n\n- \\[33\\]\nYao, Q., Xiao, L., Liu, P., Zhou, S.K.: Label-free segmentation of covid-19\nlesions in lung ct. IEEE Transactions on Medical Imaging 40(10),\n2808–2819 (2021)\n\n- \\[34\\]\nZhang, Y., Kang, B., Hooi, B., Yan, S., Feng, J.: Deep long-tailed learning: A\nsurvey. IEEE Transactions on Pattern Analysis and Machine Intelligence\n(2023)\n\n\nAppendix\n\nLeFusion: Synthesizing Myocardial Pathology on Cardiac MRI via Lesion-Focus Diffusion Models\n\nHantao Zhang\nJiancheng Yang\nShouhong Wan\nPascal Fua\n\n![Refer to caption](https://ar5iv.org/html/2403.14066/assets/x5.png)Figure A1: Visualization of the Denoising Process in LeFusion for Inpainting. The process is conditioned on the masked input. Starting from a random Gaussian noise sample, the procedure iteratively denoises this input, progressively refining it into a high-quality image with the lesions.![Refer to caption](https://ar5iv.org/html/2403.14066/assets/x6.png)Figure A2: Visualization of Synthetic Images Given Real Lesion Masks on Pathological Cases. Our LeFusion are compared with Hand-Crafted \\[ [9](https://ar5iv.org/html/2403.14066#bib.bib9 \"\")\\], Cond-Diffusion \\[ [7](https://ar5iv.org/html/2403.14066#bib.bib7 \"\"), [21](https://ar5iv.org/html/2403.14066#bib.bib21 \"\")\\] and RePaint \\[ [15](https://ar5iv.org/html/2403.14066#bib.bib15 \"\")\\].\n\n![Refer to caption](https://ar5iv.org/html/2403.14066/assets/x7.png)Figure A3: Visualization of Synthetic Images Given Synthetic Lesion Masks on Normal Cases. Our LeFusion are compared with Hand-Crafted \\[ [9](https://ar5iv.org/html/2403.14066#bib.bib9 \"\")\\], Cond-Diffusion \\[ [7](https://ar5iv.org/html/2403.14066#bib.bib7 \"\"), [21](https://ar5iv.org/html/2403.14066#bib.bib21 \"\")\\] and RePaint \\[ [15](https://ar5iv.org/html/2403.14066#bib.bib15 \"\")\\].\n\n[◄](https://ar5iv.org/html/2403.14065) [![ar5iv homepage](https://ar5iv.org/assets/ar5iv.png)](https://ar5iv.org/) [Feeling\\\\\n\\\\\nlucky?](https://ar5iv.org/feeling_lucky) [Conversion\\\\\n\\\\\nreport](https://ar5iv.org/log/2403.14066) [Report\\\\\n\\\\\nan issue](https://github.com/dginev/ar5iv/issues/new?template=improve-article--arxiv-id-.md&title=Improve+article+2403.14066) [View original\\\\\n\\\\\non arXiv](https://arxiv.org/abs/2403.14066) [►](https://ar5iv.org/html/2403.14067)",
+  "sections": {
+    "1 Introduction": {
+      "content": "In most biomedical scenarios, the number of pathological subjects is significantly lower than that of normal ones. This discrepancy is primarily due to the naturally occurring distribution of patient data, which often exhibits a long-tail characteristic \\[ [32], [34], [25], [29], [30]\\]. Furthermore, given potential biases in data collection, clinical data may be subject to algorithmic fairness \\[ [28], [3]\\], security, and privacy issues \\[ [19], [20]\\]. Thus, “synthetic data could be better than real data” \\[ [22]\\].\n\nGenerative lesion synthesis is a promising area with applications across various medical modalities, achieving remarkable successes \\[ [12]\\]. These include the synthesis of lung nodules \\[ [6], [11], [31]\\] and COVID-19 lesions \\[ [16]\\] in CT scans, colon polyp synthesis in colonoscopy \\[ [23], [18], [4]\\], tumor cell synthesis in microscopy \\[ [8]\\], synthesized brain tumors in MRI \\[ [1]\\], diabetic lesion synthesis in retinal images \\[ [26]\\], synthetic skeleton breaks in pulmonary airways and vessels \\[ [27]\\], and synthetic tumors in the liver \\[ [17]\\]. Although many types of generative method have been explored, such as VAEs \\[ [13]\\], GANs \\[ [5]\\], and diffusion models \\[ [7]\\], they often fail at producing high-quality backgrounds outside the lesion areas. While lesions might appear similar across different cases, which greatly helps when training human doctors, the background can vary significantly due to diverse imaging conditions. This is challenging for generative models, especially when they can only be trained using limited amounts of data.\n\nRecent strategies we will refer to controlled lesion synthesis (CLS) \\[ [33], [9]\\] offer an alternative. These methods start from readily available normal scans and synthesize lesions into them. This involves generating lesion masks and the textures to fill them. This targeted approach ensures high-quality background generation and controllability. Its usefulness has been demonstrated to model COVID-19 lesions \\[ [33]\\] and liver tumors \\[ [9]\\]. However, these methods are heavily hand-crafted, with heuristics that is hard to generalize.\n\nIn this study, we introduce a data-driven approach inspired by RePaint \\[ [15]\\], a diffusion-based image inpainting technique that effectively preserves background by explicitly incorporating forward-diffused background contexts in reverse diffusion process, instead of using them as conditional inputs \\[ [21]\\]. We developed lesion-focused diffusion models, named LeFusion, specifically tailored for the synthesis of lesion textures. Unlike in RePaint, we have redesigned the diffusion learning objectives to be learnable solely from the lesion, reducing the learning complexity and improving the controllability. Given the interconnectedness given various lesion types, we further propose a strategy for the joint modeling of multi-class lesions through multi-channel decomposition. Moreover, we develop a generalized diffusion model for lesion masks capable of producing a diverse set. This enhancement increases the synthesis diversity and effectively improves the performance of downstream applications.\n\nWe validate our methodology using the cardiac lesion segmentation dataset provided by Emidec \\[ [14]\\], which focuses on two specific lesion types in DE-MRI: myocardial infarction (MI) and persistent microvascular obstruction (PMO). Our results demonstrate that the pipeline we propose not only facilitates effective data augmentation of pathological scans but also enables synthetic pathology from normal ones. We use the popular nnUNet \\[ [10]\\] to show that the resulting synthetic images make it possible to effectively boost a state-of-the-art model.",
+      "citations": [
+        {
+          "start_pos": 257,
+          "end_pos": 261,
+          "text": "[32]",
+          "paper_id": "bib.bib32",
+          "single_citation": false,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 263,
+          "end_pos": 267,
+          "text": "[34]",
+          "paper_id": "bib.bib34",
+          "single_citation": false,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 269,
+          "end_pos": 273,
+          "text": "[25]",
+          "paper_id": "bib.bib25",
+          "single_citation": false,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 275,
+          "end_pos": 279,
+          "text": "[29]",
+          "paper_id": "bib.bib29",
+          "single_citation": false,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 281,
+          "end_pos": 285,
+          "text": "[30]",
+          "paper_id": "bib.bib30",
+          "single_citation": false,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 401,
+          "end_pos": 405,
+          "text": "[28]",
+          "paper_id": "bib.bib28",
+          "single_citation": false,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 407,
+          "end_pos": 410,
+          "text": "[3]",
+          "paper_id": "bib.bib3",
+          "single_citation": false,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 446,
+          "end_pos": 450,
+          "text": "[19]",
+          "paper_id": "bib.bib19",
+          "single_citation": false,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 452,
+          "end_pos": 456,
+          "text": "[20]",
+          "paper_id": "bib.bib20",
+          "single_citation": false,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 517,
+          "end_pos": 521,
+          "text": "[22]",
+          "paper_id": "bib.bib22",
+          "single_citation": true,
+          "citation_type": "others",
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 661,
+          "end_pos": 665,
+          "text": "[12]",
+          "paper_id": "bib.bib12",
+          "single_citation": true,
+          "citation_type": "others",
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 716,
+          "end_pos": 719,
+          "text": "[6]",
+          "paper_id": "bib.bib6",
+          "single_citation": false,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 721,
+          "end_pos": 725,
+          "text": "[11]",
+          "paper_id": "bib.bib11",
+          "single_citation": false,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 727,
+          "end_pos": 731,
+          "text": "[31]",
+          "paper_id": "bib.bib31",
+          "single_citation": false,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 758,
+          "end_pos": 762,
+          "text": "[16]",
+          "paper_id": "bib.bib16",
+          "single_citation": true,
+          "citation_type": "others",
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 818,
+          "end_pos": 822,
+          "text": "[23]",
+          "paper_id": "bib.bib23",
+          "single_citation": false,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 824,
+          "end_pos": 828,
+          "text": "[18]",
+          "paper_id": "bib.bib18",
+          "single_citation": false,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 830,
+          "end_pos": 833,
+          "text": "[4]",
+          "paper_id": "bib.bib4",
+          "single_citation": false,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 875,
+          "end_pos": 878,
+          "text": "[8]",
+          "paper_id": "bib.bib8",
+          "single_citation": true,
+          "citation_type": "others",
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 917,
+          "end_pos": 920,
+          "text": "[1]",
+          "paper_id": "bib.bib1",
+          "single_citation": true,
+          "citation_type": "others",
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 971,
+          "end_pos": 975,
+          "text": "[26]",
+          "paper_id": "bib.bib26",
+          "single_citation": true,
+          "citation_type": "others",
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1041,
+          "end_pos": 1045,
+          "text": "[27]",
+          "paper_id": "bib.bib27",
+          "single_citation": true,
+          "citation_type": "others",
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1086,
+          "end_pos": 1090,
+          "text": "[17]",
+          "paper_id": "bib.bib17",
+          "single_citation": true,
+          "citation_type": "others",
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1171,
+          "end_pos": 1175,
+          "text": "[13]",
+          "paper_id": "bib.bib13",
+          "single_citation": true,
+          "citation_type": "others",
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1187,
+          "end_pos": 1190,
+          "text": "[5]",
+          "paper_id": "bib.bib5",
+          "single_citation": true,
+          "citation_type": "method",
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1218,
+          "end_pos": 1221,
+          "text": "[7]",
+          "paper_id": "bib.bib7",
+          "single_citation": true,
+          "citation_type": "others",
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1674,
+          "end_pos": 1678,
+          "text": "[33]",
+          "paper_id": "bib.bib33",
+          "single_citation": false,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1680,
+          "end_pos": 1683,
+          "text": "[9]",
+          "paper_id": "bib.bib9",
+          "single_citation": false,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 2020,
+          "end_pos": 2024,
+          "text": "[33]",
+          "paper_id": "bib.bib33",
+          "single_citation": true,
+          "citation_type": "others",
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 2047,
+          "end_pos": 2050,
+          "text": "[9]",
+          "paper_id": "bib.bib9",
+          "single_citation": true,
+          "citation_type": "others",
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 2222,
+          "end_pos": 2226,
+          "text": "[15]",
+          "paper_id": "bib.bib15",
+          "single_citation": true,
+          "citation_type": "method",
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 2455,
+          "end_pos": 2459,
+          "text": "[21]",
+          "paper_id": "bib.bib21",
+          "single_citation": true,
+          "citation_type": "others",
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 3256,
+          "end_pos": 3260,
+          "text": "[14]",
+          "paper_id": "bib.bib14",
+          "single_citation": true,
+          "citation_type": "method",
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 3601,
+          "end_pos": 3605,
+          "text": "[10]",
+          "paper_id": "bib.bib10",
+          "single_citation": true,
+          "citation_type": "method",
+          "nearest_citations": null
+        }
+      ]
+    },
+    "2 Method": {
+      "content": "### 2.1 Background: Controlled Lesion Synthesis (CLS)\n\nPrior studies \\[ [33], [9]\\] aim to split lesion synthesis into separate texture and mask generation processes. This distinction facilitates lesion generation across both normal and pathological scans by relying on prior clinical knowledge, focusing on the creation of lesion masks and their textural content. Yet, these approaches are predominantly manual. For texture synthesis, they \\[ [9]\\] mainly depend on manually setting the texture’s grayscale values. Lesion shapes are crafted using morphological methods, involving the manual selection of ellipsoidal lesion masks and applying erosion and dilation techniques to soften the edges. This reliance on manual techniques restricts the advancement of controlled lesion synthesis.\n\n### 2.2 LeFusion: Lesion-Focus Diffusion Model\n\n![Refer to caption]Figure 1: Illustration of Lesion-Focus Diffusion Model. The top of the image illustrates the training process of the LeFusion, while the bottom depicts the inference process from the noise and the original image to the new image.\n\nCompared to previous handcrafted methods of controlled lesion synthesis \\[ [33], [9]\\], we have developed a framework that learns the texture and shape of lesions from data, enabling adaptation to various datasets. Our approach utilizes a repainting method which, theoretically, ensures that background information remains undisturbed, contrasting with earlier techniques. Additionally, we have designed a novel method for generating lesion masks that can automatically produce a diverse range of shapes closely resembling lesion masks. It is important to note that our proposed LeFusion supports the generation of multiple types of lesion masks and textures at the same time.\n\n##### Disentangled Lesion and Background Generation.\n\nInspired by diffusion-based inpainting \\[ [15]\\], we aim to decouple the generation of lesion and background. As demonstrated in Fig. [1]\\] as a generative method. The inference process involves sampling a random noise vector xT∼𝒩​(0,1)similar-tosubscript𝑥𝑇𝒩01x\\_{T}\\\\sim\\\\mathcal{N}(0,1) and gradually denoising it until achieving a high-quality output image x0subscript𝑥0x\\_{0}. We refer to the original image with one channel as x^0∈ℝD×H×W×1subscript^𝑥0superscriptℝ𝐷𝐻𝑊1\\\\hat{x}\\_{0}\\\\in\\\\mathbb{R}^{D\\\\times H\\\\times W\\\\times 1}, where D𝐷D signifies the depth, H𝐻H represents the height, and W𝑊W denotes the width. For the diffusion model’s reverse step from xtsubscript𝑥𝑡x\\_{t} to xt−1subscript𝑥𝑡1x\\_{t-1}, we decouple it into two components: lesion and background, as illustrated in the following equation. Here, Mfsubscript𝑀𝑓M\\_{f} and Mbsubscript𝑀𝑏M\\_{b} respectively represent the Lesion Foreground Mask and Background Mask. lt−1subscript𝑙𝑡1l\\_{t-1} is obtained from xtsubscript𝑥𝑡x\\_{t} through the reverse diffusion process pθsubscript𝑝𝜃p\\_{\\\\theta} utilizing a 3D U-Net, and x^t−1subscript^𝑥𝑡1\\\\hat{x}\\_{t-1} is derived from x^0subscript^𝑥0\\\\hat{x}\\_{0} through the forward diffusion process q𝑞q.\n\n|     |     |     |     |\n| --- | --- | --- | --- |\n|  | xt−1=lt−1⊙Mf+x^t−1⊙Mbsubscript𝑥𝑡1direct-productsubscript𝑙𝑡1subscript𝑀𝑓direct-productsubscript^𝑥𝑡1subscript𝑀𝑏{x\\_{t-1}}=l\\_{t-1}\\\\odot M\\_{f}+\\\\hat{x}\\_{t-1}\\\\odot M\\_{b} |  | (1) |\n\n##### Making Diffusion Model Lesion-Focus.\n\nHowever, the above method can not ensure the Denoised Output lt−1subscript𝑙𝑡1l\\_{t-1} focuses on the lesion area. Hence, we introduced a lesion focus loss into our model’s training process. The general training strategy for diffusion models starts with the original image x^0subscript^𝑥0\\\\hat{x}\\_{0}, continuously perturbing it by adding Gaussian noise with increasing variance over T𝑇T time steps. Subsequently, a neural network is trained, conditioned on the noised version of the image at time step t𝑡t, as well as the time step itself, to learn the noise distribution that perturbs the image, allowing the data distribution p​(xt−1\\|xt)𝑝conditionalsubscript𝑥𝑡1subscript𝑥𝑡p(x\\_{t-1}\\|x\\_{t}) at time t−1𝑡1t-1 to be inferred. During this training phase, the mask m1^^subscript𝑚1\\\\hat{m\\_{1}} is applied to ensure that the loss is calculated exclusively within the masked region.\nThe training objective of our diffusion model is defined as follows, where\n𝜺∈ℝD×H×W×1𝜺superscriptℝ𝐷𝐻𝑊1\\\\boldsymbol{\\\\varepsilon}\\\\in\\\\mathbb{R}^{D\\\\times H\\\\times W\\\\times 1} signifies the channel-wise noise sourced from a Gaussian distribution.\n\n|     |     |     |     |\n| --- | --- | --- | --- |\n|  | 𝔼x^0,ϵ∼𝒩​(0,1),t​\\[‖m1^​ϵ−m1^​pθ​(x^t,t)‖22\\]subscript𝔼formulae-sequencesimilar-tosubscript^𝑥0italic-ϵ𝒩01𝑡delimited-\\[\\]superscriptsubscriptnorm^subscript𝑚1italic-ϵ^subscript𝑚1subscript𝑝𝜃subscript^𝑥𝑡𝑡22\\\\mathbb{E}\\_{\\\\hat{x}\\_{0},\\\\epsilon\\\\sim\\\\mathcal{N}(0,1),t}\\\\left\\[\\\\left\\\\\\|\\\\hat{m\\_{1}}\\\\epsilon-\\\\hat{m\\_{1}}p\\_{\\\\theta}\\\\left(\\\\hat{x}\\_{t},t\\\\right)\\\\right\\\\\\|\\_{2}^{2}\\\\right\\] |  | (2) |\n\n##### Joint Modeling of Multi-Class Lesions.\n\nThe lesion-focused approach primarily targets the generation of single lesions. However, in many medical fields, there is a necessity to model multi-class lesions, such as MI and PMO in cardiac MRI studies. This approach does not capture the correlations between different lesions. To generate textures for multiple lesions simultaneously, we employ a joint modeling strategy for multi-class lesions, with each channel corresponding to a different lesion type. We expand the input image x^0∈ℝD×H×W×1subscript^𝑥0superscriptℝ𝐷𝐻𝑊1\\\\hat{x}\\_{0}\\\\in\\\\mathbb{R}^{D\\\\times H\\\\times W\\\\times 1} along the channel dimension based on the number of lesions (specifically 2 for this study) to obtain x^t∈ℝD×H×W×2subscript^𝑥𝑡superscriptℝ𝐷𝐻𝑊2\\\\hat{x}\\_{t}\\\\in\\\\mathbb{R}^{D\\\\times H\\\\times W\\\\times 2}. The training objective of our diffusion model is defined as follows, where n=2𝑛2n=2 represents the total number of lesions, and 𝜺∈ℝD×H×W×2𝜺superscriptℝ𝐷𝐻𝑊2\\\\boldsymbol{\\\\varepsilon}\\\\in\\\\mathbb{R}^{D\\\\times H\\\\times W\\\\times 2} signifies the channel-wise noise sourced from a Gaussian distribution. Each m^isubscript^𝑚𝑖\\\\hat{m}\\_{i} is an element of Mfsubscript𝑀𝑓M\\_{f}, with i𝑖i varying from 1 to n𝑛n.\n\n|     |     |     |     |\n| --- | --- | --- | --- |\n|  | 𝔼x^0,ϵ∼𝒩​(0,1),t​∑i=1n\\[‖mi^​ϵ−mi^​pθ​(x^t,t)‖22\\]subscript𝔼formulae-sequencesimilar-tosubscript^𝑥0italic-ϵ𝒩01𝑡superscriptsubscript𝑖1𝑛delimited-\\[\\]superscriptsubscriptnorm^subscript𝑚𝑖italic-ϵ^subscript𝑚𝑖subscript𝑝𝜃subscript^𝑥𝑡𝑡22\\\\mathbb{E}\\_{\\\\hat{x}\\_{0},\\\\epsilon\\\\sim\\\\mathcal{N}(0,1),t}\\\\sum\\_{i=1}^{n}\\\\left\\[\\\\left\\\\\\|\\\\hat{m\\_{i}}\\\\epsilon-\\\\hat{m\\_{i}}p\\_{\\\\theta}\\\\left(\\\\hat{x}\\_{t},t\\\\right)\\\\right\\\\\\|\\_{2}^{2}\\\\right\\] |  | (3) |\n\n### 2.3 Diffusion-Based Mask Synthesis\n\n![Refer to caption]Figure 2: Illustration of Diffusion-Based Lesion Mask Synthesis.\n\nIn this work, we introduce a novel framework for mask diffusion, named DiffMask. This innovative approach leverages the principles of diffusion models to specifically address the challenges of generating and refining masks in image and volume data. As shown in Fig. [2]Figure 2 ‣ 2.3 Diffusion-Based Mask Synthesis ‣ 2 Method ‣ LeFusion: Synthesizing Myocardial Pathology on Cardiac MRI via Lesion-Focus Diffusion Models\"), we introduce the mask Mm∈ℝD×H×W×1subscript𝑀𝑚superscriptℝ𝐷𝐻𝑊1M\\_{m}\\\\in\\\\mathbb{R}^{D\\\\times H\\\\times W\\\\times 1} to constrain the generation of the lesion masks within the physiological structures where lesions are likely to occur. Our approach employs multi-channel modeling to capture the shape correlations between multiple lesion masks and their spatial distribution and causal relationships (such as containment). Each channel is dedicated to generating a mask shape for a specific lesion, and we apply a smoothing kernel as a post-processing step to smooth the generated masks seamlessly. For the diffusion model’s reverse step from mtsubscript𝑚𝑡m\\_{t} to mt−1subscript𝑚𝑡1m\\_{t-1}, the training objective of our diffusion model is defined as follows, where n𝑛n represents the number of lesion types and Misubscript𝑀𝑖M\\_{i} belongs to Mmsubscript𝑀𝑚M\\_{m} for i=1,2𝑖12i=1,2:\n\n|     |     |     |     |\n| --- | --- | --- | --- |\n|  | 𝔼m0,ϵ∼𝒩​(0,1),t​∑i=1n\\[‖Mi​ϵ−Mi​pθ​(mt,t)‖22\\]subscript𝔼formulae-sequencesimilar-tosubscript𝑚0italic-ϵ𝒩01𝑡superscriptsubscript𝑖1𝑛delimited-\\[\\]superscriptsubscriptnormsubscript𝑀𝑖italic-ϵsubscript𝑀𝑖subscript𝑝𝜃subscript𝑚𝑡𝑡22\\\\mathbb{E}\\_{m\\_{0},\\\\epsilon\\\\sim\\\\mathcal{N}(0,1),t}\\\\sum\\_{i=1}^{n}\\\\left\\[\\\\left\\\\\\|M\\_{i}\\\\epsilon-M\\_{i}p\\_{\\\\theta}\\\\left(m\\_{t},t\\\\right)\\\\right\\\\\\|\\_{2}^{2}\\\\right\\] |  | (4) |",
+      "citations": [
+        {
+          "start_pos": 72,
+          "end_pos": 76,
+          "text": "[33]",
+          "paper_id": "bib.bib33",
+          "single_citation": false,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 78,
+          "end_pos": 81,
+          "text": "[9]",
+          "paper_id": "bib.bib9",
+          "single_citation": false,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 444,
+          "end_pos": 447,
+          "text": "[9]",
+          "paper_id": "bib.bib9",
+          "single_citation": true,
+          "citation_type": "others",
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1163,
+          "end_pos": 1167,
+          "text": "[33]",
+          "paper_id": "bib.bib33",
+          "single_citation": false,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1169,
+          "end_pos": 1172,
+          "text": "[9]",
+          "paper_id": "bib.bib9",
+          "single_citation": false,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1862,
+          "end_pos": 1866,
+          "text": "[15]",
+          "paper_id": "bib.bib15",
+          "single_citation": true,
+          "citation_type": "others",
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1954,
+          "end_pos": 1957,
+          "text": "[1]",
+          "paper_id": "bib.bib24",
+          "single_citation": true,
+          "citation_type": "others",
+          "nearest_citations": null
+        }
+      ]
+    },
+    "3 Experiments": {
+      "content": "### 3.1 Setup\n\n##### Dataset.\n\nThe Emidec dataset \\[ [14]\\] consists of examinations featuring DE-MRI in a short-axis orientation. This dataset provides access to fully labeled data comprising a total of 100 cases, including 33 normal (N) and 67 pathological (P) cases. The annotations within the dataset cover five classes: background, left ventricle (LV), myocardium (Myo), myocardial infarction (MI), and persistent microvascular obstruction (PMO). We split the 67 pathological cases of the Emidec dataset into 57 for training and 10 for testing. The 57 pathological cases (P) are used to train the data synthesis model. In the downstream evaluation (Sec. 3.2), we use those models to synthesize pathological cases based on both 57 pathological (P) and 33 normal (N) as the downstream training set.\n\n##### Method Comparison.\n\nThe following image synthesis algorithms are compared with the proposed LeFusion-S/J.\n\nHand-Crafted \\[ [9]\\]. The morphology of the lesion is represented by the overlapping of multiple ellipsoidal lesion masks, with the application of erosion and dilation techniques to blur the shapes. The texture is approximated using Gaussian noise and softened through interpolation and Gaussian filtering.\n\nRePaint \\[ [15]\\]. This approach removes the lesion mask from the image and then fills in the lesion texture through the process depicted in Fig. [1]Figure 1 ‣ 2.2 LeFusion: Lesion-Focus Diffusion Model ‣ 2 Method ‣ LeFusion: Synthesizing Myocardial Pathology on Cardiac MRI via Lesion-Focus Diffusion Models\"). The model employs global training loss, which lacks the capability to focus on lesion information. Due to the absence of guidance from lesion category information, it is unable to specify corresponding lesions and is confined to simulating the generation of single-class lesions\n\nCond-Diffusion \\[ [7], [21]\\].\nBesides the method described above, which removes the lesion mask from the image and then fills in the texture, another approach involves using the lesion mask and background image information as conditional inputs \\[ [21]\\] to a diffusion model \\[ [7]\\]. Specifically, given a pair of an image x0subscript𝑥0x\\_{0} and the mask of its lesion region m𝑚m, the diffusion model is conditioned on both the mask m𝑚m and the healthy region xhealth=(1−m)⊙x0subscript𝑥healthdirect-product1𝑚subscript𝑥0x\\_{\\\\text{health}}=(1-m)\\\\odot x\\_{0}. The three features x0subscript𝑥0x\\_{0}, m𝑚m, and xhealthsubscript𝑥healthx\\_{\\\\text{health}} are stacked together and fed into a 3D U-Net to infer the data distribution p​(xt−1\\|xt)𝑝conditionalsubscript𝑥𝑡1subscript𝑥𝑡p(x\\_{t-1}\\|x\\_{t}) at time t−1𝑡1t-1 from t𝑡t. The downside of this method is that it disrupts the background information. By directly using multiple masks as conditional inputs, it fails to control the corresponding categories and can only model the generation of single-class lesions.\n\nLeFusion-S/J (Ours).\nFor each lesion, individual models are trained separately for multiple texture generators, and then lesion texture information is filled in for each lesion location separately. The disadvantage is the lack of modeling for the correlation between textures across different lesions. Lesion-J is a generalized version to model multi-class lesions jointly.\n\nTable 1: Downstream Cardiac Segmentation Dice (↑↑\\\\uparrow) from DE-MRI on Emidec Dataset \\[ [14]\\]. P: real pathological cases. P’/N’: synthetic pathological cases from pathological/normal cases, using various synthetic approaches. N”: more synthetic data than N’. LeFusion-S/J: seperate / joint modeling of multi-class lesions. The bold denote best performances on lesion regison, and the red are those with significantly adverse effects compared to the baseline.\n\n|     |     |     |     |     |     |\n| --- | --- | --- | --- | --- | --- |\n| Methods | Training | Normal Region | Lesion Region |\n| LV | Myo | MI | PMO |\n| nnU-Net \\[ [10]\\] Baseline | P | 94.33 | 82.43 | 69.67 | 36.89 |\n| Texture Synthesis with Real Masks on P’ |\n| Hand-Crafted \\[ [9]\\] | P+P’ | 94.69 | 82.62 | 69.60 | 36.06 |\n| Cond-Diffusion \\[ [7], [21]\\] | P+P’ | 94.13 | 80.22 | 66.89 | 37.76 |\n| RePaint \\[ [15]\\] | P+P’ | 94.72 | 82.55 | 69.14 | 28.93 |\n| LeFusion-S (Ours) | P+P’ | 94.59 | 82.20 | 69.88 | 34.79 |\n| LeFusion-J (Ours) | P+P’ | 94.63 | 82.38 | 69.95 | 38.01 |\n| Texture Synthesis with Hand-Crafted Synthetic Masks \\[ [9]\\] on N’ |\n| Hand-Crafted \\[ [9]\\] | P+N’ | 94.31 | 80.77 | 68.19 | 35.73 |\n| Cond-Diffusion \\[ [7], [21]\\] | P+N’ | 94.08 | 79.69 | 67.41 | 31.03 |\n| LeFusion-S (Ours) | P+N’ | 94.45 | 81.82 | 69.17 | 37.18 |\n| LeFusion-J (Ours) | P+N’ | 94.66 | 82.40 | 69.87 | 37.31 |\n| Enhanced with Diffusion-Based Synthetic Mask (DiffMask) |\n| LeFusion-J+DiffMask (Ours) | P+N’ | 94.55 | 82.18 | 69.81 | 40.62 |\n| LeFusion-J+DiffMask (Ours) | P+N” | 94.37 | 82.24 | 70.17 | 42.44 |\n| LeFusion-J+DiffMask (Ours) | P+P’+N” | 94.43 | 82.24 | 70.34 | 43.54 |\n\nTable 2: Synthesis Image Quality Assessment from DE-MRI on Emidec Dataset \\[ [14]\\]. We compare the differences in image similarity between synthetic pathological cases generated by different methods given real pathological cases.\n\n|     |     |     |     |     |     |     |\n| --- | --- | --- | --- | --- | --- | --- |\n| Methods | MI | PMO | Avg. |\n| PSNR ↑↑\\\\uparrow | SSIM ↑↑\\\\uparrow | PSNR ↑↑\\\\uparrow | SSIM ↑↑\\\\uparrow | PSNR ↑↑\\\\uparrow | SSIM ↑↑\\\\uparrow |\n| Hand-Crafted \\[ [9]\\] | 9.39 | 8.30 | 7.63 | 9.15 | 8.516 | 8.70 |\n| Cond-Diffusion \\[ [7], [21]\\] | 13.25 | 46.92 | 8.00 | 9.23 | 10.62 | 28.07 |\n| RePaint \\[ [15]\\] | 19.81 | 80.68 | 15.23 | 70.27 | 17.52 | 75.47 |\n| LeFusion-S (Ours) | 25.65 | 91.78 | 27.71 | 89.42 | 26.68 | 90.60 |\n| LeFusion-J (Ours) | 28.30 | 91.41 | 35.23 | 93.23 | 31.77 | 92.32 |\n\n### 3.2 Improving Cardiac Segmentation with Synthetic Data\n\nWe show that LeFusion is effective as augmenting training databases for the purpose of training nnUNet \\[ [10]\\] to perform cardiac segmentation. We use the following synthetic subsets using various synthesis methods:\n\nP’: 57×157157\\\\times 1 synthetic cases from the 57 real pathological cases P;\nN’: 33×233233\\\\times 2 synthetic cases from the 33 normal cases N;\nN”: 33×533533\\\\times 5 synthetic cases from the 33 normal cases N.\n\nWe then use combinations of these subsets to train nnU-Net. The results are reported in Tab. [1]Table 1 ‣ Method Comparison. ‣ 3.1 Setup ‣ 3 Experiments ‣ LeFusion: Synthesizing Myocardial Pathology on Cardiac MRI via Lesion-Focus Diffusion Models\") in terms of the Dice (0-100, higher is better).\n\nIn Tab. [1]\\] produces textures that differ from real textures, leading to a decrease in baseline performance. Cond-Diffusion \\[ [7], [21]\\] disrupts background structure, lowering Myo’s Dice and blurring lesion categories, decreasing MI’s performance. RePaint \\[ [15]\\], focusing on global information, struggles to generate textures that conform to lesion characteristics, resulting in a significant decrease in the Dice for PMO lesions. LeFusion-S models the two lesions separately, ignoring the correlation between lesions, which leads to improved accuracy for MI but decreased accuracy for PMO lesions. In contrast, our proposed LeFusion-J achieves superior results; For the second group, we expanded the normal data utilizing texture synthesis with hand-crafted synthetic masks. Due to RePaint \\[ [15]\\]’s inability to distinguish between multiple lesion categories, we did not repeat experiments for it. From the experiments, we observed results similar to those of the first group; For the last, we evaluated our proposed lesion mask synthesis. Our method significantly improved the performance for both MI and PMO. Additionally, as data volume expanded, downstream segmentation Dice consistently improved.\n\n### 3.3 Synthesis Quality Assessment\n\n![Refer to caption]Figure 3: Visualization of Synthetic Images Given Lesion Masks. Masks are real one on the pathological, and synthetic on the normal. Our LeFusion are compared with Hand-Crafted \\[ [9]\\], Cond-Diffusion \\[ [7], [21]\\] and RePaint \\[ [15]\\].![Refer to caption]Figure 4: Visualization of Real / Synthetic Lesion Masks. From left to right, the images respectively show the real pathological mask, hand-crafted \\[ [9]\\] synthesized mask, and our diffusion-generated mask.\n\n##### Image Quality.\n\nAs shown in Tab. [2], [21]\\] disrupts the background structure. The lesions generated by Hand-Crafted \\[ [9]\\] and RePaint \\[ [15]\\] fail to capture texture information, such as the grayscale variations characteristic of the lesions. In contrast, LeFusion-J more accurately reflects the textures of both lesion types and, compared to LeFusion-S, results in smoother transitions at the boundaries between the two lesions and with the background. More visualizations can be found in the supplementary materials.\n\n##### Mask Quality.\n\nWe also visualize synthetic lesion masks, as shown in Fig. [4]\\], our diffusion-generated masks are closer to the real masks and exhibit a more diverse range of shape patterns.",
+      "citations": [
+        {
+          "start_pos": 53,
+          "end_pos": 57,
+          "text": "[14]",
+          "paper_id": "bib.bib14",
+          "single_citation": true,
+          "citation_type": "method",
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 932,
+          "end_pos": 935,
+          "text": "[9]",
+          "paper_id": "bib.bib9",
+          "single_citation": true,
+          "citation_type": "others",
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1236,
+          "end_pos": 1240,
+          "text": "[15]",
+          "paper_id": "bib.bib15",
+          "single_citation": true,
+          "citation_type": "method",
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1835,
+          "end_pos": 1838,
+          "text": "[7]",
+          "paper_id": "bib.bib7",
+          "single_citation": false,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1840,
+          "end_pos": 1844,
+          "text": "[21]",
+          "paper_id": "bib.bib21",
+          "single_citation": false,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 2066,
+          "end_pos": 2070,
+          "text": "[21]",
+          "paper_id": "bib.bib21",
+          "single_citation": true,
+          "citation_type": "others",
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 2097,
+          "end_pos": 2100,
+          "text": "[7]",
+          "paper_id": "bib.bib7",
+          "single_citation": true,
+          "citation_type": "others",
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 3351,
+          "end_pos": 3355,
+          "text": "[14]",
+          "paper_id": "bib.bib14",
+          "single_citation": true,
+          "citation_type": "method",
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 3893,
+          "end_pos": 3897,
+          "text": "[10]",
+          "paper_id": "bib.bib10",
+          "single_citation": true,
+          "citation_type": "method",
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 4009,
+          "end_pos": 4012,
+          "text": "[9]",
+          "paper_id": "bib.bib9",
+          "single_citation": true,
+          "citation_type": "others",
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 4076,
+          "end_pos": 4079,
+          "text": "[7]",
+          "paper_id": "bib.bib7",
+          "single_citation": false,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 4081,
+          "end_pos": 4085,
+          "text": "[21]",
+          "paper_id": "bib.bib21",
+          "single_citation": false,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 4142,
+          "end_pos": 4146,
+          "text": "[15]",
+          "paper_id": "bib.bib15",
+          "single_citation": true,
+          "citation_type": "method",
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 4369,
+          "end_pos": 4372,
+          "text": "[9]",
+          "paper_id": "bib.bib9",
+          "single_citation": true,
+          "citation_type": "others",
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 4401,
+          "end_pos": 4404,
+          "text": "[9]",
+          "paper_id": "bib.bib9",
+          "single_citation": true,
+          "citation_type": "others",
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 4468,
+          "end_pos": 4471,
+          "text": "[7]",
+          "paper_id": "bib.bib7",
+          "single_citation": false,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 4473,
+          "end_pos": 4477,
+          "text": "[21]",
+          "paper_id": "bib.bib21",
+          "single_citation": false,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 4994,
+          "end_pos": 4998,
+          "text": "[14]",
+          "paper_id": "bib.bib14",
+          "single_citation": true,
+          "citation_type": "others",
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 5401,
+          "end_pos": 5404,
+          "text": "[9]",
+          "paper_id": "bib.bib9",
+          "single_citation": true,
+          "citation_type": "others",
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 5472,
+          "end_pos": 5475,
+          "text": "[7]",
+          "paper_id": "bib.bib7",
+          "single_citation": false,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 5477,
+          "end_pos": 5481,
+          "text": "[21]",
+          "paper_id": "bib.bib21",
+          "single_citation": false,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 5545,
+          "end_pos": 5549,
+          "text": "[15]",
+          "paper_id": "bib.bib15",
+          "single_citation": true,
+          "citation_type": "method",
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 5909,
+          "end_pos": 5913,
+          "text": "[10]",
+          "paper_id": "bib.bib10",
+          "single_citation": true,
+          "citation_type": "method",
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 6542,
+          "end_pos": 6545,
+          "text": "[1]",
+          "paper_id": "bib.bib9",
+          "single_citation": true,
+          "citation_type": "others",
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 6663,
+          "end_pos": 6666,
+          "text": "[7]",
+          "paper_id": "bib.bib7",
+          "single_citation": false,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 6668,
+          "end_pos": 6672,
+          "text": "[21]",
+          "paper_id": "bib.bib21",
+          "single_citation": false,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 6798,
+          "end_pos": 6802,
+          "text": "[15]",
+          "paper_id": "bib.bib15",
+          "single_citation": true,
+          "citation_type": "method",
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 7337,
+          "end_pos": 7341,
+          "text": "[15]",
+          "paper_id": "bib.bib15",
+          "single_citation": true,
+          "citation_type": "method",
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 7987,
+          "end_pos": 7990,
+          "text": "[9]",
+          "paper_id": "bib.bib9",
+          "single_citation": true,
+          "citation_type": "others",
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 8012,
+          "end_pos": 8015,
+          "text": "[7]",
+          "paper_id": "bib.bib7",
+          "single_citation": false,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 8017,
+          "end_pos": 8021,
+          "text": "[21]",
+          "paper_id": "bib.bib21",
+          "single_citation": false,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 8039,
+          "end_pos": 8043,
+          "text": "[15]",
+          "paper_id": "bib.bib15",
+          "single_citation": true,
+          "citation_type": "method",
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 8216,
+          "end_pos": 8219,
+          "text": "[9]",
+          "paper_id": "bib.bib9",
+          "single_citation": true,
+          "citation_type": "others",
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 8314,
+          "end_pos": 8317,
+          "text": "[2]",
+          "paper_id": "bib.bib7",
+          "single_citation": false,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 8319,
+          "end_pos": 8323,
+          "text": "[21]",
+          "paper_id": "bib.bib21",
+          "single_citation": false,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 8402,
+          "end_pos": 8405,
+          "text": "[9]",
+          "paper_id": "bib.bib9",
+          "single_citation": true,
+          "citation_type": "others",
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 8423,
+          "end_pos": 8427,
+          "text": "[15]",
+          "paper_id": "bib.bib15",
+          "single_citation": true,
+          "citation_type": "method",
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 8888,
+          "end_pos": 8891,
+          "text": "[4]",
+          "paper_id": "bib.bib9",
+          "single_citation": true,
+          "citation_type": "others",
+          "nearest_citations": null
+        }
+      ]
+    },
+    "4 Discussion & Conclusion": {
+      "content": "##### Concurrent Work.\n\nA recent study \\[ [2]\\] employs conditional diffusion \\[ [7], [21]\\] to synthesize abdomen tumors, building on the controlled lesion synthesis framework \\[ [33], [9]\\]. In their approach, the diffusion process is not lesion-focus, learning both the background and the lesion, with the lesion mask and the background image (minus the lesion part) serving as conditional inputs. The preservation of background can not be theoretically guaranteed. Despite differences in applications and implementation details, e.g. the use of encoded latent diffusion \\[ [21]\\], this approach is essentially Cond-Diffusion as described. From our findings, it struggles to ensure high-quality background generation (Fig. [3]Figure 3 ‣ 3.3 Synthesis Quality Assessment ‣ 3 Experiments ‣ LeFusion: Synthesizing Myocardial Pathology on Cardiac MRI via Lesion-Focus Diffusion Models\")), and may potentially lead to adverse effects in downstream applications (Tab. [1]Table 1 ‣ Method Comparison. ‣ 3.1 Setup ‣ 3 Experiments ‣ LeFusion: Synthesizing Myocardial Pathology on Cardiac MRI via Lesion-Focus Diffusion Models\")).\n\n##### Conclusion.\n\nIn conclusion, we introduce LeFusion, a novel lesion-focused diffusion models capable by recalibrating the diffusion learning objectives to target lesion areas. It preserves background by integrating forward-diffused background contexts into the reverse diffusion process. Our methodology is extended to handle multi-class lesions jointly, and further enhanced by a generative model for lesion masks, significantly broadening the diversity of our synthetic data. We demonstrate that synthetic data generated by our method can effectively boost the performance of a state-of-the-art network like nnU-Net.\n\n#### 4.0.1 Acknowledgment.\n\nThis research was supported in part by a Swiss National Science Foundation grant.",
+      "citations": [
+        {
+          "start_pos": 42,
+          "end_pos": 45,
+          "text": "[2]",
+          "paper_id": "bib.bib2",
+          "single_citation": true,
+          "citation_type": "others",
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 81,
+          "end_pos": 84,
+          "text": "[7]",
+          "paper_id": "bib.bib7",
+          "single_citation": false,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 86,
+          "end_pos": 90,
+          "text": "[21]",
+          "paper_id": "bib.bib21",
+          "single_citation": false,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 180,
+          "end_pos": 184,
+          "text": "[33]",
+          "paper_id": "bib.bib33",
+          "single_citation": false,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 186,
+          "end_pos": 189,
+          "text": "[9]",
+          "paper_id": "bib.bib9",
+          "single_citation": false,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 577,
+          "end_pos": 581,
+          "text": "[21]",
+          "paper_id": "bib.bib21",
+          "single_citation": true,
+          "citation_type": "others",
+          "nearest_citations": null
+        }
+      ]
+    }
+  },
+  "references": {
+    "data": {},
+    "key_map": {}
+  }
+}

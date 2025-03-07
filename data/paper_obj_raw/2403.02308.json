@@ -1,0 +1,1278 @@
+{
+  "title": "Vision-RWKV: Efficient and Scalable Visual Perception with RWKV-Like Architectures",
+  "abstract": "Transformers have revolutionized computer vision and natural language\nprocessing, but their high computational complexity limits their application in\nhigh-resolution image processing and long-context analysis. This paper\nintroduces Vision-RWKV (VRWKV), a model adapted from the RWKV model used in the\nNLP field with necessary modifications for vision tasks. Similar to the Vision\nTransformer (ViT), our model is designed to efficiently handle sparse inputs\nand demonstrate robust global processing capabilities, while also scaling up\neffectively, accommodating both large-scale parameters and extensive datasets.\nIts distinctive advantage lies in its reduced spatial aggregation complexity,\nwhich renders it exceptionally adept at processing high-resolution images\nseamlessly, eliminating the necessity for windowing operations. Our evaluations\ndemonstrate that VRWKV surpasses ViT's performance in image classification and\nhas significantly faster speeds and lower memory usage processing\nhigh-resolution inputs. In dense prediction tasks, it outperforms window-based\nmodels, maintaining comparable speeds. These results highlight VRWKV's\npotential as a more efficient alternative for visual perception tasks. Code is\nreleased at \\url{https://github.com/OpenGVLab/Vision-RWKV}.",
+  "paper_id": "http://arxiv.org/abs/2403.02308v2",
+  "markdown_content": "(eccv) Package eccv Warning: Package ‘hyperref’ is loaded with option ‘pagebackref’, which is \\*not\\* recommended for camera-ready version\n\n11institutetext: 1OpenGVLab, Shanghai AI Laboratory\n\n2The Chinese University of Hong Kong  3Fudan University\n\n4Nanjing University  5Tsinghua University  6SenseTime Research\n\n# Vision-RWKV: Efficient and Scalable Visual Perception with RWKV-Like Architectures\n\nYuchen Duan∗2211Weiyun Wang∗3311Zhe Chen∗4411Xizhou Zhu\n551166Lewei Lu\n66Tong Lu\n44Yu Qiao\n11Hongsheng Li\n22Jifeng Dai\n5511Wenhai Wang🖂\n\n2211\n\n###### Abstract\n\n††\\\\* Equal contribution;   🖂 Corresponding author (wangwenhai362@gmail.com)\n\nTransformers have revolutionized computer vision and natural language processing, but their high computational complexity limits their application in high-resolution image processing and long-context analysis.\nThis paper introduces Vision-RWKV (VRWKV), a model adap-ted from the RWKV model used in the NLP field with necessary modifications for vision tasks.\nSimilar to the Vision Transformer (ViT), our model is designed to efficiently handle sparse inputs and demonstrate robust global processing capabilities, while also scaling up effectively, accommodating both large-scale parameters and extensive datasets.\nIts distinctive advantage lies in its reduced spatial aggregation complexity, which renders it exceptionally adept at processing high-resolution images seamlessly, eliminating the necessity for windowing operations.\nOur evaluations demonstrate that VRWKV surpasses ViT’s performance in image classification and has significantly faster speeds and lower memory usage processing high-resolution inputs. In dense prediction tasks, it outperforms window-based models, maintaining comparable speeds. These results highlight VRWKV’s potential as a more efficient alternative for visual perception tasks.\nCode is released at [https://github.com/OpenGVLab/Vision-RWKV](https://github.com/OpenGVLab/Vision-RWKV \"\").\n\n###### Keywords:\n\nRWKV Visual Perception Linear Attention\n\n## 1 Introduction\n\nVision Transformers (ViTs) \\[ [12](https://ar5iv.org/html/2403.02308#bib.bib12 \"\"), [49](https://ar5iv.org/html/2403.02308#bib.bib49 \"\"), [52](https://ar5iv.org/html/2403.02308#bib.bib52 \"\"), [44](https://ar5iv.org/html/2403.02308#bib.bib44 \"\"), [18](https://ar5iv.org/html/2403.02308#bib.bib18 \"\")\\], renowned for their flexibility and global information processing capabilities, have established new benchmarks in a variety of vision tasks in the past few years.\nHowever, the quadratic computational complexity associated with ViTs limits their ability to efficiently process high-resolution images and lengthy sequences, posing a significant barrier to their broader application.\nAs a result, the exploration of a vision architecture that integrates the versatility and comprehensive processing strengths of ViTs, while reducing computational demands, has emerged as a crucial area of research.\n\n![Refer to caption](https://ar5iv.org/html/2403.02308/assets/x1.png)Figure 1: Performance and efficiency comparison of Vision-RWKV (VRWKV) and ViT. (a) APbsuperscriptAPb\\\\rm AP^{b} comparison of VRWKV and ViT \\[ [49](https://ar5iv.org/html/2403.02308#bib.bib49 \"\")\\] with window attention and global attention on the COCO \\[ [27](https://ar5iv.org/html/2403.02308#bib.bib27 \"\")\\] dataset. (b) Inference speed comparison of VRWKV-T and ViT-T across input resolutions ranging from 224 to 2048. (c) GPU memory comparison of VRWKV-T and ViT-T across input resolutions from 224 to 2048.\n\nIn recent developments within natural language processing (NLP), models like RWKV \\[ [35](https://ar5iv.org/html/2403.02308#bib.bib35 \"\")\\] and Mamba \\[ [15](https://ar5iv.org/html/2403.02308#bib.bib15 \"\")\\] have emerged as popular solutions for achieving heightened efficiency and processing lengthy texts.\nThese innovative models have demonstrated attributes similar to transformers \\[ [9](https://ar5iv.org/html/2403.02308#bib.bib9 \"\"), [40](https://ar5iv.org/html/2403.02308#bib.bib40 \"\"), [43](https://ar5iv.org/html/2403.02308#bib.bib43 \"\"), [28](https://ar5iv.org/html/2403.02308#bib.bib28 \"\"), [38](https://ar5iv.org/html/2403.02308#bib.bib38 \"\"), [39](https://ar5iv.org/html/2403.02308#bib.bib39 \"\"), [3](https://ar5iv.org/html/2403.02308#bib.bib3 \"\"), [25](https://ar5iv.org/html/2403.02308#bib.bib25 \"\"), [45](https://ar5iv.org/html/2403.02308#bib.bib45 \"\")\\] in NLP tasks, including the ability to handle long-range dependencies and parallel processing.\nFurthermore, they have also proven to be scalable, performing well with large-scale NLP datasets.\nConsidering the significant differences between image and text modalities, it remains challenging to envision these methods entirely supplanting ViTs for vision-related tasks.\nIt is imperative to conduct an in-depth analysis of how these models are applied to vision tasks, examining their scalability concerning data and parameters, their efficiency in handling sparse visual data, such as masked image modeling, and the necessary techniques to ensure model stability during scaling up.\n\nIn this work, we introduce Vision-RWKV (VRWKV), which is designed to adapt the RWKV architecture for vision tasks. This adaptation preserves the core structure and benefits of RWKV \\[ [35](https://ar5iv.org/html/2403.02308#bib.bib35 \"\")\\] while integrating critical modifications to tailor it for processing visual data.\nSpecifically, we introduce a quad-directional shift (Q-Shift) tailed for vision tasks and modify the original causal RWKV attention mechanism to a bidirectional global attention mechanism.\nThe Q-Shift operation expands the semantic range of individual tokens, while the bidirectional attention enables the calculation of global attention within linear computational complexity in an RNN form forward and backward.\nWe primarily make modifications to the exponent in the RWKV attention mechanism, releasing the limitations of the decay vector and transforming the absolute positional bias into a relative bias. These changes enhance the model’s capability while ensuring scalability and stability.\nIn this way, our model inherits the efficiency of RWKV in handling global information and sparse inputs, while also being able to model the local concept of vision tasks.\nWe implement layer scale \\[ [50](https://ar5iv.org/html/2403.02308#bib.bib50 \"\")\\] and layer normalization \\[ [2](https://ar5iv.org/html/2403.02308#bib.bib2 \"\")\\] where needed to stabilize the model’s output across different scales. These adjustments significantly improve the model’s stability when scaling up to a larger size.\n\nBuilding on the aforementioned design, we develop a range of VRWKV models with different model scales, spanning from the VRWKV-Tiny (6M) to the VRWKV-Large (335M).\nThese models are trained using large-scale datasets such as ImageNet-1K \\[ [8](https://ar5iv.org/html/2403.02308#bib.bib8 \"\")\\] and ImageNet-22K \\[ [8](https://ar5iv.org/html/2403.02308#bib.bib8 \"\")\\].\nWe train them using both common supervised classification and sparse input MAE methods \\[ [18](https://ar5iv.org/html/2403.02308#bib.bib18 \"\")\\] and evaluate their performance on visual perception tasks, including classification, detection, and segmentation.\nUnder the same settings, VRWKV has comparable performance to ViT in these tasks with lower computational costs while maintaining stable scalability.\nThis achievement enables VRWKV training parallelism, high flexibility, excellent performance, and low inference cost simultaneously, making it a promising alternative to ViT in a wide range of vision tasks, particularly in high-resolution scenarios.\n\nIn this paper, our main contributions are:\n\n(1) We propose VRWKV as a low-cost alternative to ViT, achieving comprehensive substitution with lower computational costs. Our model not only retains the advantages of ViT, including the capability to capture long-range dependencies and flexibility in handling sparse inputs but also reduces complexity to a linear level. This significant reduction eliminates the need for window-based attention in processing high-resolution images, making VRWKV a more efficient and scalable solution for vision tasks.\n\n(2) To adapt to vision tasks, we introduce bidirectional global attention and a novel token shift method called Q-Shift, enabling the achievement of linear complexity in global attention. To ensure stable scalability, we make several efforts, including using a relative positional bias in the attention mechanism to avoid overflow, adopting layer scale in our model, and adding extra layer normalization in the calculation of key matrices.\n\n(3) Our model surpasses window-based ViTs and is comparable to global attention ViTs, demonstrating lower FLOPs and faster processing speeds as resolution increases.\nNotably, VRWKV-T achieves 75.1% top-1 accuracy trained only on the ImageNet-1K \\[ [8](https://ar5iv.org/html/2403.02308#bib.bib8 \"\")\\], outperforming DeiT-T \\[ [49](https://ar5iv.org/html/2403.02308#bib.bib49 \"\")\\] by 2.9 points. With large-scale parameters ( _i.e_., 335M) and training data ( _i.e_., ImageNet-22K),\nthe top-1 accuracy of VRWKV-L is further boosted to 86.0%, which is higher than ViT-L \\[ [12](https://ar5iv.org/html/2403.02308#bib.bib12 \"\")\\] (86.04 _vs. missing_ 85.15). In addition, on COCO \\[ [27](https://ar5iv.org/html/2403.02308#bib.bib27 \"\")\\], a challenging downstream benchmark, our best model VRWKV-L achieves 50.6% box mAP, 1.9 points better than ViT-L (50.6 _vs. missing_ 48.7).\n\n## 2 Related Works\n\n### 2.1 Vision Encoder\n\nRecent advances in vision encoders have significantly pushed the boundaries of computer vision, demonstrating remarkable performance across a range of tasks.\nConvolutional neural networks (CNNs) served as the foundational model in computer vision. The advancement of computational resources, such as GPUs, has enabled the successful training of stacked convolutional blocks like AlexNet \\[ [23](https://ar5iv.org/html/2403.02308#bib.bib23 \"\")\\] and VGG \\[ [41](https://ar5iv.org/html/2403.02308#bib.bib41 \"\")\\] on large-scale image classification datasets ( _e.g_., ImageNet \\[ [8](https://ar5iv.org/html/2403.02308#bib.bib8 \"\")\\]). This development paved the way for deeper and more sophisticated convolutional neural architectures, including GoogleNet \\[ [48](https://ar5iv.org/html/2403.02308#bib.bib48 \"\")\\], ResNet \\[ [20](https://ar5iv.org/html/2403.02308#bib.bib20 \"\")\\], and DenseNet \\[ [22](https://ar5iv.org/html/2403.02308#bib.bib22 \"\")\\].\n\nIn addition to these innovations, significant advancements have also been made with architectures like SENet \\[ [21](https://ar5iv.org/html/2403.02308#bib.bib21 \"\")\\], which introduced a channel attention mechanism to enhance model sensitivity to informative features. Similarly, SKNet \\[ [26](https://ar5iv.org/html/2403.02308#bib.bib26 \"\")\\] merged multiple kernel sizes to adjust the receptive field adaptively.\nFurther extending the CNN paradigm, recent models such as RepLKNet \\[ [11](https://ar5iv.org/html/2403.02308#bib.bib11 \"\")\\] and ConvNeXt \\[ [31](https://ar5iv.org/html/2403.02308#bib.bib31 \"\")\\] have refined the convolutional layers to improve efficiency and accuracy, while InternImage \\[ [55](https://ar5iv.org/html/2403.02308#bib.bib55 \"\")\\] explored the strategies to scale up the convolution-based vision model.\n\nDrawing inspiration from the effectiveness of self-attention layers and transformer architectures in the NLP field, the Vision Transformer (ViT) \\[ [12](https://ar5iv.org/html/2403.02308#bib.bib12 \"\")\\] applied a transformer framework on image patches, offering a global receptive field and dynamic spatial aggregation.\nDue to the quadratically increasing computational complexity of the vanilla attention mechanism, approaches like PVT \\[ [56](https://ar5iv.org/html/2403.02308#bib.bib56 \"\"), [57](https://ar5iv.org/html/2403.02308#bib.bib57 \"\")\\] and Linformer \\[ [54](https://ar5iv.org/html/2403.02308#bib.bib54 \"\")\\] implemented global attention on down-sampled feature maps, whereas other approaches like Swin \\[ [58](https://ar5iv.org/html/2403.02308#bib.bib58 \"\")\\] and HaloNet \\[ [51](https://ar5iv.org/html/2403.02308#bib.bib51 \"\"), [6](https://ar5iv.org/html/2403.02308#bib.bib6 \"\")\\] introduced sampling techniques to enlarge the receptive field.\n\nAnother research direction involved replacing self-attention layers in models with linear complexity layers. Representative works in this domain include LongNet \\[ [10](https://ar5iv.org/html/2403.02308#bib.bib10 \"\")\\], RWKV \\[ [35](https://ar5iv.org/html/2403.02308#bib.bib35 \"\")\\], RetNet \\[ [47](https://ar5iv.org/html/2403.02308#bib.bib47 \"\")\\], and Mamba \\[ [15](https://ar5iv.org/html/2403.02308#bib.bib15 \"\")\\], though few have concentrated on vision-related applications. Concurrently, attempts like Vim \\[ [63](https://ar5iv.org/html/2403.02308#bib.bib63 \"\")\\] and VMamba \\[ [29](https://ar5iv.org/html/2403.02308#bib.bib29 \"\")\\] have sought to integrate these linear attention layers into the vision domain. However, these endeavors have only been experimented with on small-scale models, and it remains uncertain whether their efficiency can scale up to larger models.\n\n### 2.2 Feature Aggregation Mechanism\n\nThe research on feature aggregation has received significant attention in the field of artificial intelligence.\nFor visual data processing, convolutional operators \\[ [24](https://ar5iv.org/html/2403.02308#bib.bib24 \"\")\\], known for their parameter sharing and local perception, enabled efficient handling of large-scale data through sliding computation. Despite their advantages, traditional CNN operators faced challenges in modeling long-range dependencies.\nTo overcome this issue, advanced convolutional operators, such as the deformable convolution \\[ [5](https://ar5iv.org/html/2403.02308#bib.bib5 \"\"), [64](https://ar5iv.org/html/2403.02308#bib.bib64 \"\"), [60](https://ar5iv.org/html/2403.02308#bib.bib60 \"\")\\], have improved the flexibility of CNN operators, enhancing their long-range modeling capability.\n\nAs for the field of NLP, RNN-based operators \\[ [13](https://ar5iv.org/html/2403.02308#bib.bib13 \"\"), [34](https://ar5iv.org/html/2403.02308#bib.bib34 \"\"), [37](https://ar5iv.org/html/2403.02308#bib.bib37 \"\")\\] have historically dominated because of their effectiveness in sequence modeling. RNNs and LSTMs excel in capturing temporal dependencies, making them suitable for tasks requiring an understanding of sequence dynamics.\nSubsequently, a significant shift occurred.\nThe introduction of the transformer architecture \\[ [52](https://ar5iv.org/html/2403.02308#bib.bib52 \"\")\\] marked a turning point, with both NLP and computer vision fields shifting focus toward attention-based feature aggregation.\nThe global attention mechanism overcomes the limitations of CNNs in modeling long-range dependencies and the shortcomings of RNNs in parallel computation while coming at a high computational cost.\n\nTo address the high computational cost of attention operators while modeling long sequences, researchers have introduced innovations such as window attention and spatial reduction attention.\nWindow attention \\[ [30](https://ar5iv.org/html/2403.02308#bib.bib30 \"\"), [51](https://ar5iv.org/html/2403.02308#bib.bib51 \"\"), [6](https://ar5iv.org/html/2403.02308#bib.bib6 \"\")\\] restricts the self-attention computation within local windows, drastically reducing the computational complexity while preserving the receptive field through window-level interaction.\nSpatial reduction attention \\[ [56](https://ar5iv.org/html/2403.02308#bib.bib56 \"\"), [57](https://ar5iv.org/html/2403.02308#bib.bib57 \"\")\\], on the other hand, reduces the dimensionality of the feature space before applying the attention mechanism, effectively decreasing the computational requirements without significantly degrading the model’s performance.\n\nIn addition to the efforts to optimize the global attention mechanism, various operators with linear complexity \\[ [35](https://ar5iv.org/html/2403.02308#bib.bib35 \"\"), [47](https://ar5iv.org/html/2403.02308#bib.bib47 \"\"), [15](https://ar5iv.org/html/2403.02308#bib.bib15 \"\"), [36](https://ar5iv.org/html/2403.02308#bib.bib36 \"\"), [46](https://ar5iv.org/html/2403.02308#bib.bib46 \"\")\\] have also been explored. For instance, RWKV \\[ [35](https://ar5iv.org/html/2403.02308#bib.bib35 \"\")\\] and RetNet \\[ [47](https://ar5iv.org/html/2403.02308#bib.bib47 \"\")\\] employed exponential decay to model global information efficiently while SSMs \\[ [16](https://ar5iv.org/html/2403.02308#bib.bib16 \"\"), [17](https://ar5iv.org/html/2403.02308#bib.bib17 \"\"), [42](https://ar5iv.org/html/2403.02308#bib.bib42 \"\"), [53](https://ar5iv.org/html/2403.02308#bib.bib53 \"\")\\] also exhibited linear complexity concerning sequence length and modification in Mamba \\[ [15](https://ar5iv.org/html/2403.02308#bib.bib15 \"\")\\] enable them to be input-dependent. Besides, XCA \\[ [1](https://ar5iv.org/html/2403.02308#bib.bib1 \"\")\\] achieved linear complexity by calculating the cross-variance between input tokens. However, the low efficiency of information interaction between tokens makes the need for the assistance of additional modules necessary to complete a comprehensive feature aggregation.\nDespite some concurrent efforts \\[ [29](https://ar5iv.org/html/2403.02308#bib.bib29 \"\"), [63](https://ar5iv.org/html/2403.02308#bib.bib63 \"\"), [14](https://ar5iv.org/html/2403.02308#bib.bib14 \"\")\\], adapting these NLP-derived techniques to vision tasks remains a challenge in maintaining stable training across larger and more complex vision models.\n\n![Refer to caption](https://ar5iv.org/html/2403.02308/assets/x2.png)Figure 2: Overall architecture of Vision-RWKV (VRWKV).\n(a) The VRWKV architecture includes L𝐿L identical VRWKV encoder layers, an average pooling layer, and a linear prediction head. (b) The details of the VRWKV encoder layer. Q-Shift denotes the quad-directional shift method tailed for vision tasks. The “Bi-WKV” module served as a bidirectional RNN cell or a global attention mechanism.\n\n## 3 Vision-RWKV\n\n### 3.1 Overall Architecture\n\nIn this section, we propose Vision-RWKV (VRWKV), an efficient vision encoder with a linear complexity attention mechanism.\nOur principle is to preserve the advantages of the original RWKV architecture \\[ [35](https://ar5iv.org/html/2403.02308#bib.bib35 \"\")\\], making only necessary modifications to enable its flexible application in vision tasks, supporting sparse input, and ensuring the stability of the training process after scaling up.\nAn overview of our VRWKV is depicted in [Fig.2](https://ar5iv.org/html/2403.02308#S2.F2 \"In 2.2 Feature Aggregation Mechanism ‣ 2 Related Works ‣ Vision-RWKV: Efficient and Scalable Visual Perception with RWKV-Like Architectures\").\n\nVRWKV adopts a block-stacked image encoder design like ViT, where each block consists of a spatial-mix module and a channel-mix module. The spatial-mix module functions as an attention mechanism, performing linear complexity global attention computation while the channel mix module serves as a feed-forward network (FFN), performing feature fusion in the channel dimension. The entire VRWKV includes a patch embedding layer and a stack of L𝐿L identical VRWKV encoder layers, where each layer maintains the input resolution.\n\nData Flow.\nFirst, we transform the H×W×3𝐻𝑊3H\\\\times W\\\\times 3 image into H​W/p2𝐻𝑊superscript𝑝2HW/p^{2} patches, where p𝑝p denotes the patch size. The patches after a linear projection add the position embedding to obtain image tokens of shape T×C𝑇𝐶T\\\\times C, where T=H​W/p2𝑇𝐻𝑊superscript𝑝2T=HW/p^{2} denotes the total number of tokens. These tokens are then input into the VRWKV encoder with L𝐿L layers.\n\nIn each layer, tokens are first fed into the spatial-mix module which plays the role of a global attention mechanism. Specifically, as shown in [Fig.2](https://ar5iv.org/html/2403.02308#S2.F2 \"In 2.2 Feature Aggregation Mechanism ‣ 2 Related Works ‣ Vision-RWKV: Efficient and Scalable Visual Perception with RWKV-Like Architectures\")(b), the input tokens are first shifted and fed into three parallel linear layers to obtain the matrices Rs,Ks,Vs∈ℝT×Csubscript𝑅𝑠subscript𝐾𝑠subscript𝑉𝑠superscriptℝ𝑇𝐶R\\_{s},K\\_{s},V\\_{s}\\\\in\\\\mathbb{R}^{T\\\\times C}:\n\n|     |     |     |     |\n| --- | --- | --- | --- |\n|  | Rs=Q​-​ShiftR​(X)​WR,Ks=Q​-​ShiftK​(X)​WK,Vs=Q​-​ShiftV​(X)​WV.formulae-sequencesubscript𝑅sQ-subscriptShift𝑅𝑋subscript𝑊𝑅formulae-sequencesubscript𝐾sQ-subscriptShift𝐾𝑋subscript𝑊𝐾subscript𝑉sQ-subscriptShift𝑉𝑋subscript𝑊𝑉\\\\displaystyle R\\_{\\\\text{s}}={\\\\rm Q\\\\mbox{-}Shift}\\_{R}(X)W\\_{R},~{}~{}~{}~{}K\\_{\\\\text{s}}={\\\\rm Q\\\\mbox{-}Shift}\\_{K}(X)W\\_{K},~{}~{}~{}~{}V\\_{\\\\text{s}}={\\\\rm Q\\\\mbox{-}Shift}\\_{V}(X)W\\_{V}. |  | (1) |\n\nHere, Kssubscript𝐾sK\\_{\\\\text{s}} and Vssubscript𝑉sV\\_{\\\\text{s}} are passed to calculate the global attention result w​k​v∈ℝT×C𝑤𝑘𝑣superscriptℝ𝑇𝐶wkv\\\\in\\\\mathbb{R}^{T\\\\times C} by a linear complexity bidirectional attention mechanism and multiplied with σ​(R)𝜎𝑅\\\\sigma(R) which controls the output Ossubscript𝑂sO\\_{\\\\text{s}} probability:\n\n|     |     |     |     |     |\n| --- | --- | --- | --- | --- |\n|  | Ossubscript𝑂s\\\\displaystyle O\\_{\\\\text{s}} | =(σ​(Rs)⊙w​k​v)​WO,absentdirect-product𝜎subscript𝑅s𝑤𝑘𝑣subscript𝑊𝑂\\\\displaystyle=(\\\\sigma(R\\_{\\\\text{s}})\\\\odot wkv)W\\_{O}, |  | (2) |\n|  | where​w​k​vwhere𝑤𝑘𝑣\\\\displaystyle\\\\text{where}\\ wkv | =Bi​-​WKV​(Ks,Vs).absentBi-WKVsubscript𝐾ssubscript𝑉s\\\\displaystyle=\\\\mathrm{Bi\\\\mbox{-}WKV}(K\\_{\\\\text{s}},V\\_{\\\\text{s}}). |  |\n\nOperator σ𝜎\\\\sigma denotes the sigmoid function, and ⊙direct-product\\\\odot means an element-wise multiplication is applied. The Q​-​ShiftQ-Shift\\\\rm Q\\\\mbox{-}Shift is a token shift function specially designed for the adaption of vision tasks.\nAfter an output linear projection, features are then stabilized using layer normalization \\[ [2](https://ar5iv.org/html/2403.02308#bib.bib2 \"\")\\].\n\nSubsequently, the tokens are passed into the channel-mix module for a channel-wise fusion. Rcsubscript𝑅cR\\_{\\\\text{c}}, Kcsubscript𝐾cK\\_{\\\\text{c}} are obtained in a similar manner as spatial-mix:\n\n|     |     |     |     |\n| --- | --- | --- | --- |\n|  | Rc=Q​-​ShiftR​(X)​WR,Kc=Q​-​ShiftK​(X)​WK.formulae-sequencesubscript𝑅cQ-subscriptShift𝑅𝑋subscript𝑊𝑅subscript𝐾cQ-subscriptShift𝐾𝑋subscript𝑊𝐾\\\\displaystyle R\\_{\\\\text{c}}={\\\\rm Q\\\\mbox{-}Shift}\\_{R}(X)W\\_{R},~{}~{}~{}~{}K\\_{\\\\text{c}}={\\\\rm Q\\\\mbox{-}Shift}\\_{K}(X)W\\_{K}. |  | (3) |\n\nHere, Vcsubscript𝑉cV\\_{\\\\text{c}} is a linear projection of K𝐾K after the activation function and the output Ocsubscript𝑂cO\\_{\\\\text{c}} is also controlled by a gate mechanism σ​(Rc)𝜎subscript𝑅c\\\\sigma(R\\_{\\\\text{c}}) before the output projection:\n\n|     |     |     |     |     |\n| --- | --- | --- | --- | --- |\n|  | Ocsubscript𝑂c\\\\displaystyle O\\_{\\\\text{c}} | =(σ​(Rc)⊙Vc)​WO,absentdirect-product𝜎subscript𝑅csubscript𝑉csubscript𝑊𝑂\\\\displaystyle=(\\\\sigma(R\\_{\\\\text{c}})\\\\odot V\\_{\\\\text{c}})W\\_{O}, |  | (4) |\n|  | where​Vcwheresubscript𝑉c\\\\displaystyle\\\\text{where}\\ V\\_{\\\\text{c}} | =SquaredReLU​(Kc)​WV.absentSquaredReLUsubscript𝐾csubscript𝑊𝑉\\\\displaystyle=\\\\mathrm{SquaredReLU}(K\\_{\\\\text{c}})W\\_{V}. |  |\n\nSimultaneously, residual connections \\[ [20](https://ar5iv.org/html/2403.02308#bib.bib20 \"\")\\] are established from the tokens to each normalization layer to ensure that training gradients do not vanish in deep networks.\n\n### 3.2 Linear Complexity Bidirectional Attention\n\nDifferent from the vanilla RWKV \\[ [35](https://ar5iv.org/html/2403.02308#bib.bib35 \"\")\\], we make the following modifications to its original attention mechanism to adapt it to vision tasks:\n(1) Bidirectional attention: We extend the upper limit of original RWKV attention from t𝑡t (the current token) to T−1𝑇1T-1 (the last token) in the summation formula to ensure that all tokens are mutually visible in the calculation of each result. Thus, the original causal attention transforms into bidirectional global attention.\n(2) Relative bias: We compute the absolute value of the time difference t−i𝑡𝑖t-i and divide it by the total number of tokens (denoted as T𝑇T) to represent the relative bias of tokens in images of different sizes.\n(3) Flexible decay: We no longer restrict the learnable decay parameter w𝑤w to be positive in the exponential term allowing the exponential decay attention to focus on tokens further away from the current token in different channels.\nThe simple yet necessary modification achieves global attention calculation and maximizes the preservation of RWKV’s low complexity and adaptability to vision tasks.\n\nSimilar to the attention in RWKV, our bidirectional attention can also be equivalently expressed in a summation form (for the sake of clarity) and an RNN form (in practical implementation).\n\nSummation Form.\nThe attention calculation result for the t𝑡t-th token is given by the following formula:\n\n|     |     |     |     |\n| --- | --- | --- | --- |\n|  | w​k​vt=Bi​-​WKV​(K,V)t=∑i=0,i≠tT−1e−(\\|t−i\\|−1)/T⋅w+ki​vi+eu+kt​vt∑i=0,i≠tT−1e−(\\|t−i\\|−1)/T⋅w+ki+eu+kt.𝑤𝑘subscript𝑣𝑡Bi-WKVsubscript𝐾𝑉𝑡subscriptsuperscript𝑇1formulae-sequence𝑖0𝑖𝑡superscript𝑒⋅𝑡𝑖1𝑇𝑤subscript𝑘𝑖subscript𝑣𝑖superscript𝑒𝑢subscript𝑘𝑡subscript𝑣𝑡subscriptsuperscript𝑇1formulae-sequence𝑖0𝑖𝑡superscript𝑒⋅𝑡𝑖1𝑇𝑤subscript𝑘𝑖superscript𝑒𝑢subscript𝑘𝑡\\\\displaystyle wkv\\_{t}=\\\\mathrm{Bi\\\\mbox{-}WKV}(K,V)\\_{t}=\\\\frac{\\\\sum^{T-1}\\_{i=0,i\\\\neq t}e^{-(\\|t-i\\|-1)/T\\\\cdot w+k\\_{i}}v\\_{i}+e^{u+k\\_{t}}v\\_{t}}{\\\\sum^{T-1}\\_{i=0,i\\\\neq t}e^{-(\\|t-i\\|-1)/T\\\\cdot w+k\\_{i}}+e^{u+k\\_{t}}}. |  | (5) |\n\nHere, T𝑇T represents the total number of tokens, equal to H​W/p2𝐻𝑊superscript𝑝2HW/p^{2}, w𝑤w and u𝑢u are two C𝐶C-dimensional learnable vectors that represent channel-wise spatial decay and the bonus indicating the current token, respectively. ktsubscript𝑘𝑡k\\_{t} and vtsubscript𝑣𝑡v\\_{t} denotes t𝑡t-th feature of K𝐾K and V𝑉V.\n\nThe summation formula indicates that the output w​k​vt𝑤𝑘subscript𝑣𝑡wkv\\_{t} is a weighted sum of V𝑉V along the token dimension from 00 to T−1𝑇1T-1, resulting in a C𝐶C-dimensional vector. It represents the result obtained by applying the attention operation to the t-th token. The weight is determined by the spatial decay vector w𝑤w, the relative bias between tokens (\\|t−i\\|−1)/T𝑡𝑖1𝑇(\\|t-i\\|-1)/T, and kisubscript𝑘𝑖k\\_{i} collectively.\n\nRNN Form.\nIn the practical implementation, the above [Eq.5](https://ar5iv.org/html/2403.02308#S3.E5 \"In 3.2 Linear Complexity Bidirectional Attention ‣ 3 Vision-RWKV ‣ Vision-RWKV: Efficient and Scalable Visual Perception with RWKV-Like Architectures\") can be transformed into a recursive formula in the form of RNN that the result of each token can be obtained through a fixed number of FLOPs.\nBy splitting the summation term of the denominator and numerator in [Eq.5](https://ar5iv.org/html/2403.02308#S3.E5 \"In 3.2 Linear Complexity Bidirectional Attention ‣ 3 Vision-RWKV ‣ Vision-RWKV: Efficient and Scalable Visual Perception with RWKV-Like Architectures\") with t𝑡t as the boundary, we can obtain 4 hidden states:\n\n|     |     |     |     |     |     |     |\n| --- | --- | --- | --- | --- | --- | --- |\n|  | at−1=subscript𝑎𝑡1absent\\\\displaystyle a\\_{t-1}= | ∑i=0t−1e−(\\|t−i\\|−1)/T⋅w+ki​vi,subscriptsuperscript𝑡1𝑖0superscript𝑒⋅𝑡𝑖1𝑇𝑤subscript𝑘𝑖subscript𝑣𝑖\\\\displaystyle\\\\sum^{t-1}\\_{i=0}e^{-(\\|t-i\\|-1)/T\\\\cdot w+k\\_{i}}v\\_{i}, | bt−1=subscript𝑏𝑡1absent\\\\displaystyle b\\_{t-1}= | ∑i=t+1T−1e−(\\|t−i\\|−1)/T⋅w+ki​vi,subscriptsuperscript𝑇1𝑖𝑡1superscript𝑒⋅𝑡𝑖1𝑇𝑤subscript𝑘𝑖subscript𝑣𝑖\\\\displaystyle\\\\sum^{T-1}\\_{i=t+1}e^{-(\\|t-i\\|-1)/T\\\\cdot w+k\\_{i}}v\\_{i}, |  | (6) |\n|  | ct−1=subscript𝑐𝑡1absent\\\\displaystyle c\\_{t-1}= | ∑i=0t−1e−(\\|t−i\\|−1)/T⋅w+ki,subscriptsuperscript𝑡1𝑖0superscript𝑒⋅𝑡𝑖1𝑇𝑤subscript𝑘𝑖\\\\displaystyle\\\\sum^{t-1}\\_{i=0}e^{-(\\|t-i\\|-1)/T\\\\cdot w+k\\_{i}}, | dt−1=subscript𝑑𝑡1absent\\\\displaystyle d\\_{t-1}= | ∑i=t+1T−1e−(\\|t−i\\|−1)/T⋅w+ki,subscriptsuperscript𝑇1𝑖𝑡1superscript𝑒⋅𝑡𝑖1𝑇𝑤subscript𝑘𝑖\\\\displaystyle\\\\sum^{T-1}\\_{i=t+1}e^{-(\\|t-i\\|-1)/T\\\\cdot w+k\\_{i}}, |  |\n\nthat can be recursively computed. The update of hidden states only requires adding or subtracting one summation term and multiplying or dividing e−w/Tsuperscript𝑒𝑤𝑇e^{-w/T}.\nThen the t𝑡t-th result can be given as:\n\n|     |     |     |     |     |\n| --- | --- | --- | --- | --- |\n|  | w​k​vt𝑤𝑘subscript𝑣𝑡\\\\displaystyle wkv\\_{t} | =at−1+bt−1+ekt+u​vtct−1+dt−1+ekt+u.absentsubscript𝑎𝑡1subscript𝑏𝑡1superscript𝑒subscript𝑘𝑡𝑢subscript𝑣𝑡subscript𝑐𝑡1subscript𝑑𝑡1superscript𝑒subscript𝑘𝑡𝑢\\\\displaystyle=\\\\frac{a\\_{t-1}+b\\_{t-1}+e^{k\\_{t}+u}v\\_{t}}{c\\_{t-1}+d\\_{t-1}+e^{k\\_{t}+u}}. |  | (7) |\n\nEach update step yields an attention result ( _i.e_., w​k​vt𝑤𝑘subscript𝑣𝑡wkv\\_{t}) for a token, so the entire w​k​v𝑤𝑘𝑣wkv matrix requires T𝑇T steps.\n\nWhen the input K𝐾K and V𝑉V are matrices with the shape of T×C𝑇𝐶T\\\\times C, the computational cost of calculating the w​k​v𝑤𝑘𝑣wkv matrix is given by:\n\n|     |     |     |     |\n| --- | --- | --- | --- |\n|  | FLOPs​(Bi-WKV​(K,V))=13×T×C.FLOPsBi-WKV𝐾𝑉13𝑇𝐶\\\\text{FLOPs}(\\\\text{Bi\\\\mbox{-}WKV}(K,V))=13\\\\times T\\\\times C.\\\\vspace{-0.5em} |  | (8) |\n\nHere, the number 13 is approximately from the updates of (a,b,c,d)𝑎𝑏𝑐𝑑(a,b,c,d), the computation of the exponential, and the calculation of w​k​vt𝑤𝑘subscript𝑣𝑡wkv\\_{t}. T𝑇T is the total number of update steps and is equal to the number of image tokens.\nThe above approximation shows that the complexity of the forward process is O​(T​C)𝑂𝑇𝐶O(TC). The backward propagation of the operator can still be represented as a more complex RNN form, with a computational complexity of O​(T​C)𝑂𝑇𝐶O(TC). The specific formula for backward propagation is provided in the Appendix.\n\n### 3.3 Quad-Directional Token Shift\n\nBy introducing an exponential decay mechanism, the complexity of global attention can be reduced from quadratic to linear, greatly enhancing the computational efficiency of the model in high-resolution images. However, the one-dimensional decay does not align with the neighboring relationships in two-dimensional images. Therefore, we introduce a quad-directional token shift (Q-Shift) in the first step of each spatial-mix and channel-mix module. The Q-Shift operation allows all tokens shifted and linearly interpolated with their neighboring tokens as follows:\n\n|     |     |     |     |     |\n| --- | --- | --- | --- | --- |\n|  | Q​-​Shift(∗)​(X)Q-subscriptShift𝑋\\\\displaystyle{\\\\rm Q\\\\mbox{-}Shift}\\_{(\\*)}(X) | =X+(1−μ(\\*))​X†,absent𝑋1subscript𝜇(\\*)superscript𝑋†\\\\displaystyle=X+(1-\\\\mu\\_{\\\\text{(\\*)}})X^{\\\\dagger}, |  | (9) |\n|  | where​X†​\\[h,w\\]wheresuperscript𝑋†ℎ𝑤\\\\displaystyle\\\\text{where}\\ X^{{\\\\dagger}}\\[h,w\\] | =Concat(X\\[h−1,w,0:C/4\\],X\\[h+1,w,C/4:C/2\\],\\\\displaystyle=\\\\mathrm{Concat}(X\\[h-1,w,0:C/4\\],X\\[h+1,w,C/4:C/2\\], |  |\n|  |  | X\\[h,w−1,C/2:3C/4\\],X\\[h,w+1,3C/4:C\\]).\\\\displaystyle\\ \\ \\ \\ \\ \\ \\ \\ \\ \\ \\ \\ \\ \\ X\\[h,w-1,C/2:3C/4\\],X\\[h,w+1,3C/4:C\\]). |  |\n\nSubscript (∗)∈{R,K,V}𝑅𝐾𝑉(\\*)\\\\in\\\\{R,K,V\\\\} denotes 3 interpolation of X𝑋X and X†superscript𝑋†X^{\\\\dagger} controlled by the learnable vectors μ(∗)subscript𝜇\\\\mu\\_{(\\*)} for the later calculation of R,K,V𝑅𝐾𝑉R,K,V, respectively. hℎh and w𝑤w denote the row and column index of token X𝑋X, “:” is a slicing operation excluded the end index. The Q-Shift makes the attention mechanism of different channels obtain the prior of focusing on neighboring tokens internally without introducing many additional FLOPs.\nThe Q-Shift operation also increases the receptive field of each token which greatly enhances the coverage of the token in the posterior layers.\n\n### 3.4 Scale Up Stability\n\nBoth the number of model layers increasing and the accumulation in the exponent term during the recursion can lead to instability in the model output and affect the stability of the training process.\nTo mitigate the instability, we employ two simple but effective modifications to stabilize the scale-up of the model.\n(1) Bounded exponential:\nAs the input resolution increases, both exponential decay and growth quickly exceed the range of floating-point numbers. Therefore, we divide the exponential term by the number of tokens (such as exp(−(\\|t−i\\|−1)/T⋅w\\\\mathrm{exp}(-(\\|t-i\\|-1)/T\\\\cdot w)), making the maximum decay and growth bounded.\n(2) Extra layer normalization:\nWhen the model gets deeper, we directly add layer normalization \\[ [2](https://ar5iv.org/html/2403.02308#bib.bib2 \"\")\\] after the attention mechanism and Squared ReLU operation to prevent the model’s output from overflowing.\nThe two modifications enable stable scaling of both input resolution and model depth, allowing large models to train and converge stably. We also introduce layer scale \\[ [50](https://ar5iv.org/html/2403.02308#bib.bib50 \"\")\\] which contributes to the stability of the models as they scale up.\n\n| Model | Emb Dim | Hidden Dim | Depth | Extra Norm | #Param |\n| --- | --- | --- | --- | --- | --- |\n| VRWKV-T | 192 | 768 | 12 | ✕ | 6.2M |\n| VRWKV-S | 384 | 1536 | 12 | ✕ | 23.8M |\n| VRWKV-B | 768 | 3072 | 12 | ✕ | 93.7M |\n| VRWKV-L | 1024 | 4096 | 24 | ✓ | 334.9M |\n\nTable 1: Default settings for Vision-RWKV of different scales.\nWe report the embedding dimension, hidden dimension, and model depth for VRWKV-T/S/B/L.\n“Extra Norm” means additional layer normalization layers are used to stabilize the model’s outputs.\n“#Param” denotes the number of parameters.\n\n### 3.5 Model Details\n\nFollowing ViT, the hyper-parameters for variants of VRWKV, including embedding dimension, hidden dimension in linear projection, and depth, are specified in [Tab.1](https://ar5iv.org/html/2403.02308#S3.T1 \"In 3.4 Scale Up Stability ‣ 3 Vision-RWKV ‣ Vision-RWKV: Efficient and Scalable Visual Perception with RWKV-Like Architectures\").\nDue to the increased depth of the VRWKV-L model, additional layer normalizations as discussed in [Sec.3.4](https://ar5iv.org/html/2403.02308#S3.SS4 \"3.4 Scale Up Stability ‣ 3 Vision-RWKV ‣ Vision-RWKV: Efficient and Scalable Visual Perception with RWKV-Like Architectures\"), are incorporated at appropriate positions to ensure output stability.\n\n## 4 Experiments\n\nWe comprehensively evaluate the substitutability of our VRWKV method for ViT in performance, scalability, flexibility, and efficiency.\nWe validate the effectiveness of our model on the widely-used image classification dataset ImageNet \\[ [8](https://ar5iv.org/html/2403.02308#bib.bib8 \"\")\\]. For downstream dense prediction tasks, we select detection tasks on the COCO \\[ [27](https://ar5iv.org/html/2403.02308#bib.bib27 \"\")\\] dataset and semantic segmentation on the ADE20K \\[ [62](https://ar5iv.org/html/2403.02308#bib.bib62 \"\")\\] dataset.\n\n|     |     |     |     |     |     |\n| --- | --- | --- | --- | --- | --- |\n|  | Method | Size | #Param | FLOPs | Top-1 Acc |\n| hierarchical | ResNet-18 \\[ [20](https://ar5iv.org/html/2403.02308#bib.bib20 \"\")\\] | 2242superscript2242224^{2} | 11.7M | 1.8G | 69.9 |\n| PVT-T \\[ [56](https://ar5iv.org/html/2403.02308#bib.bib56 \"\")\\] | 2242superscript2242224^{2} | 13.2M | 1.9G | 75.1 |\n| ResNet-50 \\[ [20](https://ar5iv.org/html/2403.02308#bib.bib20 \"\")\\] | 2242superscript2242224^{2} | 25.6M | 4.1G | 76.6 |\n| Swin-T \\[ [30](https://ar5iv.org/html/2403.02308#bib.bib30 \"\")\\] | 2242superscript2242224^{2} | 28.3M | 4.4G | 81.2 |\n| PVT-M \\[ [56](https://ar5iv.org/html/2403.02308#bib.bib56 \"\")\\] | 2242superscript2242224^{2} | 44.2M | 6.7G | 81.2 |\n| ResNet-101 \\[ [20](https://ar5iv.org/html/2403.02308#bib.bib20 \"\")\\] | 2242superscript2242224^{2} | 44.6M | 7.9G | 78.0 |\n| Swin-S \\[ [30](https://ar5iv.org/html/2403.02308#bib.bib30 \"\")\\] | 2242superscript2242224^{2} | 49.6M | 8.7G | 83.0 |\n| PVT-L \\[ [56](https://ar5iv.org/html/2403.02308#bib.bib56 \"\")\\] | 2242superscript2242224^{2} | 61.4M | 9.8G | 81.7 |\n| Swin-B \\[ [30](https://ar5iv.org/html/2403.02308#bib.bib30 \"\")\\] | 2242superscript2242224^{2} | 87.8M | 15.1G | 83.4 |\n| DeiT-T \\[ [49](https://ar5iv.org/html/2403.02308#bib.bib49 \"\")\\] | 2242superscript2242224^{2} | 5.7M | 1.3G | 72.2 |\n|  | DeiT-S \\[ [49](https://ar5iv.org/html/2403.02308#bib.bib49 \"\")\\] | 2242superscript2242224^{2} | 22.1M | 4.6G | 79.9 |\n|  | XCiT-S12 \\[ [1](https://ar5iv.org/html/2403.02308#bib.bib1 \"\")\\] | 2242superscript2242224^{2} | 26.0M | 4.8G | 82.0 |\n|  | DeiT-B \\[ [49](https://ar5iv.org/html/2403.02308#bib.bib49 \"\")\\] | 2242superscript2242224^{2} | 86.6M | 17.6G | 81.8 |\n|  | XCiT-L24 \\[ [1](https://ar5iv.org/html/2403.02308#bib.bib1 \"\")\\] | 2242superscript2242224^{2} | 189.0M | 36.1G | 82.9 |\n|  | ViT-L \\[ [12](https://ar5iv.org/html/2403.02308#bib.bib12 \"\")\\] | 3842superscript3842384^{2} | 309.5M | 191.1G | 85.2 |\n|  | VRWKV-T | 2242superscript2242224^{2} | 6.2M | 1.2G | 75.1 |\n|  | VRWKV-S | 2242superscript2242224^{2} | 23.8M | 4.6G | 80.1 |\n|  | VRWKV-B | 2242superscript2242224^{2} | 93.7M | 18.2G | 82.0 |\n|  | VRWKV-L | 3842superscript3842384^{2} | 334.9M | 189.5G | 86.0 |\n| non-hierarchical | VRWKV-L⋆ | 3842superscript3842384^{2} | 334.9M | 189.5G | 86.5 |\n\nTable 2: Validation results on ImageNet-1K.\nVRWKV-T/S/B are trained from scratch using ImageNet-1K, while VRWKV-L is pre-trained on Imagenet-22K and fine-tuned on Imagenet-1K.\n“#Param” denotes the number of parameters, and “FLOPs” means the computational workload for processing an image at the resolution specified in the “Size” column.\n“⋆⋆\\\\star” denotes Bamboo-47K \\[ [61](https://ar5iv.org/html/2403.02308#bib.bib61 \"\")\\] is used in the pre-training.\n\n### 4.1 Image Classification\n\nSettings.\nFor -Tiny/Small/Base models, we conduct supervised training from scratch on ImageNet-1K \\[ [8](https://ar5iv.org/html/2403.02308#bib.bib8 \"\")\\]. Following the training strategy and data augmentation of DeiT \\[ [49](https://ar5iv.org/html/2403.02308#bib.bib49 \"\")\\], we use a batch size of 1024, AdamW \\[ [33](https://ar5iv.org/html/2403.02308#bib.bib33 \"\")\\] with a base learning rate of 5e-4, weight decay of 0.05, and cosine annealing schedule \\[ [32](https://ar5iv.org/html/2403.02308#bib.bib32 \"\")\\]. Images are cropped to the resolution of 224×224224224224\\\\times 224 for training and validation. For the -Large models, we first pre-train them for 90 epochs on ImageNet-22K with a batch size of 4096 and resolution of 192×192192192192\\\\times 192, and then fine-tune them for 20 epochs on ImageNet-1K to a higher resolution of 384×384384384384\\\\times 384.\n\nResults.\nWe compare the results of our VRWKV with other hierarchical and non-hierarchical backbones on the ImageNet-1K validation dataset. As shown in [Tab.2](https://ar5iv.org/html/2403.02308#S4.T2 \"In 4 Experiments ‣ Vision-RWKV: Efficient and Scalable Visual Perception with RWKV-Like Architectures\"), with the same number of parameters, computational complexity, and training/testing resolutions, VRWKV achieves better results than ViT.\nFor example, when VRWKV-T has slightly lower FLOPs than DeiT-T(1.2G _vs_. 1.3G), our VRWKV-T achieves a 2.9 point higher than DeiT-T on top-1 accuracy.\nWhen the model size scales up, VRWKV still demonstrates higher baseline performance.\nIn the case of large models, VRWKV-L achieves a 0.8 point higher top-1 accuracy of 86.0% at the resolution of 384×384384384384\\\\times 384 than ViT-L, with a slightly reduced computational cost.\nThe superior performance from tiny to large-size models demonstrates that the VRWKV model possesses the scalability as ViT.\nAdditionally, after using Bamboo-47K \\[ [61](https://ar5iv.org/html/2403.02308#bib.bib61 \"\")\\] in the pre-train process, the performance of VRWKV-L can be further boosted to 86.5%, indicating that our VRWKV also possesses the ability like ViT to benefit from pre-training on large-scale datasets.\nThe exploration of VRWKV in classification tasks demonstrates its potential to be a viable alternative to traditional ViT models.\n\n### 4.2 Object Detection\n\n| Method | #Param | FLOPs | APbsuperscriptAPb\\\\rm AP^{b} | APmsuperscriptAPm\\\\rm AP^{m} |\n| --- | --- | --- | --- | --- |\n| ViT-T†\\[ [49](https://ar5iv.org/html/2403.02308#bib.bib49 \"\")\\] | 8.0M | 95.4G | 41.1 | 37.5 |\n| ViT-T \\[ [49](https://ar5iv.org/html/2403.02308#bib.bib49 \"\")\\] | 8.0M | 147.1G | 41.6 | 37.9 |\n| VRWKV-T (ours) | 8.4M | 67.9G | 41.7 | 38.0 |\n| ViT-S†\\[ [49](https://ar5iv.org/html/2403.02308#bib.bib49 \"\")\\] | 27.5M | 241.2G | 44.6 | 39.7 |\n| ViT-S \\[ [49](https://ar5iv.org/html/2403.02308#bib.bib49 \"\")\\] | 27.5M | 344.5G | 44.9 | 40.1 |\n| VRWKV-S (ours) | 29.3M | 189.9G | 44.8 | 40.2 |\n| ViT-B†\\[ [49](https://ar5iv.org/html/2403.02308#bib.bib49 \"\")\\] | 99.5M | 686.7G | 46.2 | 41.5 |\n| ViT-B \\[ [49](https://ar5iv.org/html/2403.02308#bib.bib49 \"\")\\] | 99.5M | 893.3G | 46.8 | 41.8 |\n| VRWKV-B (ours) | 106.6M | 599.0G | 46.8 | 41.7 |\n| ViT-L†\\[ [44](https://ar5iv.org/html/2403.02308#bib.bib44 \"\")\\] | 327.0M | 1799.3G | 48.7 | 43.3 |\n| VRWKV-L (ours) | 351.9M | 1730.6G | 50.6 | 44.9 |\n\nTable 3: Object detection and instance segmentation on COCO val2017.\nAll models adopt the ViT-Adapter \\[ [4](https://ar5iv.org/html/2403.02308#bib.bib4 \"\")\\] to generate multi-scale features for detection heads.\n -T/S/B models are initialized with ImageNet-1K pre-trained weights, and all -L models with ImageNet-22K weights.\n“#Param” denotes the number of backbone parameters. “FLOPs” denotes the computational workload of the backbone with an input image of 1333×80013338001333\\\\times 800.\n“††\\\\dagger” means window attention is adopted in ViT layers.\n\nSettings.\nIn the detection tasks, we adopt Mask R-CNN \\[ [19](https://ar5iv.org/html/2403.02308#bib.bib19 \"\")\\] as the detection head. For the -Tiny/Small/Base models, the backbones use weights pre-trained on ImageNet-1K for 300 epochs. For the -Large model, weights pre-trained on ImageNet-22K are used. All models use a 1×\\\\times training schedule ( _i.e_., 12 epochs) with a batch size of 16, and AdamW \\[ [33](https://ar5iv.org/html/2403.02308#bib.bib33 \"\")\\] optimizer with an initial learning rate of 1e-4 and weight decay of 0.05.\n\nResults.\nIn [Tab.3](https://ar5iv.org/html/2403.02308#S4.T3 \"In 4.2 Object Detection ‣ 4 Experiments ‣ Vision-RWKV: Efficient and Scalable Visual Perception with RWKV-Like Architectures\"), we report the detection results on the COCO val \\[ [27](https://ar5iv.org/html/2403.02308#bib.bib27 \"\")\\] dataset using VRWKV and ViT as backbones. As the results showed in [Fig.1](https://ar5iv.org/html/2403.02308#S1.F1 \"In 1 Introduction ‣ Vision-RWKV: Efficient and Scalable Visual Perception with RWKV-Like Architectures\") (a) and [Tab.3](https://ar5iv.org/html/2403.02308#S4.T3 \"In 4.2 Object Detection ‣ 4 Experiments ‣ Vision-RWKV: Efficient and Scalable Visual Perception with RWKV-Like Architectures\"), due to the use of window attention in dense prediction tasks, VRWKV with global attention can achieve better performance than ViT with lower FLOPs. For example, VRWKV-T has approximately 30% lower backbone FLOPs compared to ViT-T†, with an improvement of APbsuperscriptAPb\\\\mathrm{AP^{b}} by 0.6 points. Similarly, VRWKV-L achieves a 1.9-point increase in APbsuperscriptAPb\\\\mathrm{AP^{b}} with lower FLOPs compared to ViT-L†.\nAdditionally, we compare the performance of VRWKV and ViT using global attention. For instance, VRWKV-S achieves similar performance to ViT-S with 45% lower FLOPs. This demonstrates the effectiveness of VRWKV’s global attention mechanism in dense prediction tasks and the advantage of lower computational complexity compared to the original attention mechanism.\n\n### 4.3 Semantic Segmentation\n\n| Method | #Param | FLOPs | mIoU |\n| --- | --- | --- | --- |\n| ViT-T \\[ [49](https://ar5iv.org/html/2403.02308#bib.bib49 \"\")\\] | 8.0M | 20.9G | 42.6 |\n| VRWKV-T (ours) | 8.4M | 16.6G | 43.3 |\n| ViT-S \\[ [49](https://ar5iv.org/html/2403.02308#bib.bib49 \"\")\\] | 27.5M | 54.0G | 46.2 |\n| VRWKV-S (ours) | 29.3M | 46.3G | 47.2 |\n| ViT-B \\[ [49](https://ar5iv.org/html/2403.02308#bib.bib49 \"\")\\] | 99.5M | 157.9G | 48.8 |\n| VRWKV-B (ours) | 106.6M | 146.0G | 49.2 |\n| ViT-L \\[ [44](https://ar5iv.org/html/2403.02308#bib.bib44 \"\")\\] | 327.0M | 446.8G | 53.4 |\n| VRWKV-L (ours) | 351.9M | 421.9G | 53.5 |\n\nTable 4: Semantic segmentation on the ADE20K val set.\nAll models used ViT-Adapter \\[ [4](https://ar5iv.org/html/2403.02308#bib.bib4 \"\")\\] for multi-scale feature generation and are trained with UperNet \\[ [59](https://ar5iv.org/html/2403.02308#bib.bib59 \"\")\\] as the segmentation heads. For consistency in comparison, all -T/S/B models are initialized using ImageNet-1K pre-training, whereas -L models utilize ImageNet-22K pre-training.\n“#Param” refers to the number of parameters of the backbone. We report the FLOPs of backbones with the input size of 512×512512512512\\\\times 512.\n\nSettings.\nIn the semantic segmentation task, we use UperNet \\[ [59](https://ar5iv.org/html/2403.02308#bib.bib59 \"\")\\] as the segmentation head. Specifically, all ViT models use global attention in the segmentation task.\nFor the -Tiny/Small/Base models, the backbones use weights pre-trained on ImageNet-1K. And for the -Large model, weights pre-trained on ImageNet-22K are used. We employ the AdamW optimizer with an initial learning rate of 6e-5 for the -Small/Base/Large models and 12e-5 for the -Tiny model, a batch size of 16, and a weight decay of 0.01.\nAll models are trained for 160k iterations on the training set of the ADE20K dataset \\[ [62](https://ar5iv.org/html/2403.02308#bib.bib62 \"\")\\].\n\nResults.\nAs shown in [Tab.4](https://ar5iv.org/html/2403.02308#S4.T4 \"In 4.3 Semantic Segmentation ‣ 4 Experiments ‣ Vision-RWKV: Efficient and Scalable Visual Perception with RWKV-Like Architectures\"), when using UperNet for semantic segmentation, models based on VRWKV consistently outperform those based on ViT with global attention, while also being more efficient.\nFor example, VRWKV-S achieves 1 point higher than ViT-S with a 14% FLOPs decrease. VRWKV-L creates a result of 53.5 mIoU similar to ViT-L while the computation of the backbone has a 25G FLOPs lower.\nThese results demonstrate that our VRWKV backbones can extract better features for semantic segmentation compared to ViT backbones while also being more efficient, benefiting from the linear complexity attention mechanism.\n\n### 4.4 Ablation Study\n\nSettings.\nWe conduct ablation studies of the tiny-size VRWKV on ImageNet-1K \\[ [8](https://ar5iv.org/html/2403.02308#bib.bib8 \"\")\\] to validate the effectiveness of various key components like Q-Shift and bidirectional attention. The experimental settings are consistent with [Sec.4.1](https://ar5iv.org/html/2403.02308#S4.SS1 \"4.1 Image Classification ‣ 4 Experiments ‣ Vision-RWKV: Efficient and Scalable Visual Perception with RWKV-Like Architectures\").\n\nToken Shift.\nWe compare the performance of not using token shift, using the original shift method in RWKV \\[ [35](https://ar5iv.org/html/2403.02308#bib.bib35 \"\")\\], and our Q-Shift.\nAs shown in [Tab.5](https://ar5iv.org/html/2403.02308#S4.T5 \"In 4.4 Ablation Study ‣ 4 Experiments ‣ Vision-RWKV: Efficient and Scalable Visual Perception with RWKV-Like Architectures\"), the variation in the shift method shows performance differences. Variant 1 without token shift leads to a poor performance of 71.5, which is 3.6 points lower than our model. Even with the use of our global attention, the model using the original token shift still has a 0.7-point gap with our model.\n\nBidirectional Attention.\nThe bidirectional attention mechanism enables the model to achieve global attention while the original RWKV attention has a causal mask internally. The result of Variant 3 shows that the global attention mechanism brings a 2.3 points increase in the top-1 accuracy.\n\n| Method | Token Shift | Bidirectional | Top-1 Acc |\n| Attention |\n| RWKV \\[ [35](https://ar5iv.org/html/2403.02308#bib.bib35 \"\")\\] | original | ✕ | 71.1 (-4.0) |\n| Variant 1 | none | ✓ | 71.5 (-3.6) |\n| Variant 2 | original | ✓ | 74.4 (-0.7) |\n| Variant 3 | Q-Shift | ✕ | 72.8 (-2.3) |\n| VRWKV-T (ours) | Q-Shift | ✓ | 75.1 |\n\nTable 5: Ablation on key components of the proposed VRWKV.\nAll models are trained from scratch on ImageNet-1K. The “original” means the original token shift in RWKV \\[ [35](https://ar5iv.org/html/2403.02308#bib.bib35 \"\")\\] which mixes the token in a single direction is used.\n\nEffective Receptive Field (ERF).\nWe analyze the impact of different designs on the ERF of models based on \\[ [11](https://ar5iv.org/html/2403.02308#bib.bib11 \"\")\\] and visualize it in [Fig.3](https://ar5iv.org/html/2403.02308#S4.F3 \"In 4.4 Ablation Study ‣ 4 Experiments ‣ Vision-RWKV: Efficient and Scalable Visual Perception with RWKV-Like Architectures\")(a). We visualize the ERF of the central pixel with an input size of 1024 × 1024. In  [Fig.3](https://ar5iv.org/html/2403.02308#S4.F3 \"In 4.4 Ablation Study ‣ 4 Experiments ‣ Vision-RWKV: Efficient and Scalable Visual Perception with RWKV-Like Architectures\")(a), “No Shift” represents the absence of the token shift method (Q-Shift), and “RWKV Attn” indicates using the original RWKV attention mechanism without our modifications for vision tasks.\nFrom the comparison in the figure, all models except the “RWKV Attn” one achieved global attention while the global capacity of the VRWKV-T model is better than that of ViT-T. Despite the assistance of Q-Shift, the central pixel in “RWKV Attn” still cannot attend to the pixels on the bottom of the image due to the large input resolution. The results of “No Shift” and Q-Shift show that the Q-Shift method expands the core range of the receptive field, enhancing the inductive bias of global attention.\n\nEfficiency Analysis.\nWe gradually increase the input resolution from 224×224224224224\\\\times 224 to 2048×2048204820482048\\\\times 2048 and compare the inference and memory efficiency of VRWKV-T and ViT-T. The results were tested on an Nvidia A100 GPU, as shown in [Fig.1](https://ar5iv.org/html/2403.02308#S1.F1 \"In 1 Introduction ‣ Vision-RWKV: Efficient and Scalable Visual Perception with RWKV-Like Architectures\"). From the curves presented in [Fig.1](https://ar5iv.org/html/2403.02308#S1.F1 \"In 1 Introduction ‣ Vision-RWKV: Efficient and Scalable Visual Perception with RWKV-Like Architectures\")(b), it is observed that at lower resolutions, such as 224×224224224224\\\\times 224 with around 200 image tokens, VRWKV-T and ViT-T exhibit comparable memory usage, though VRWKV-T has a slightly lower FPS compared to ViT-T.\nHowever, with increasing resolution, VRWKV-T’s FPS rapidly exceeds that of ViT-T, thanks to its linear attention mechanism. Additionally, VRWKV-T’s RNN-like computational framework ensures a slow increase in memory usage. By the time the resolution hits 2048×2048204820482048\\\\times 2048 (equivalent to 16384 tokens), VRWKV-T’s inference speed is 10 times faster than ViT-T, and its memory consumption is reduced by 80% compared to ViT-T.\n\nWe also compare the speed of our Bi​-​WKVBi-WKV{\\\\rm Bi\\\\mbox{-}WKV} and flash attention \\[ [7](https://ar5iv.org/html/2403.02308#bib.bib7 \"\")\\], reported in [Fig.3](https://ar5iv.org/html/2403.02308#S4.F3 \"In 4.4 Ablation Study ‣ 4 Experiments ‣ Vision-RWKV: Efficient and Scalable Visual Perception with RWKV-Like Architectures\")(b). Flash attention is highly efficient at low resolutions yet plagued by quadratic complexity, its speed decreases rapidly as the resolution increases. In high-resolution scenarios, our linear operator Bi​-​WKVBi-WKV{\\\\rm Bi\\\\mbox{-}WKV} demonstrates a significant speed advantage. For instance, when the input is 2048×2048204820482048\\\\times 2048 ( _i.e_., 16384 tokens) with the channel and head number settings according to ViT-B and VRWKV-B, our Bi​-​WKVBi-WKV{\\\\rm Bi\\\\mbox{-}WKV} operator is 2.8×2.8\\\\times faster than flash attention in inference runtime and 2.7×2.7\\\\times faster in the combined forward and backward pass.\n\nMAE Pre-training.\nSimilar to ViT, our VRWKV model can handle sparse inputs and benefits from the MAE pre-training \\[ [19](https://ar5iv.org/html/2403.02308#bib.bib19 \"\")\\]. By simply modifying the Q-Shift to perform a bidirectional shift operation, VRWKV can be pre-trained using MAE. The pre-trained weights can be directly fine-tuned for other tasks using a Q-Shift manner. Following the same MAE pre-training setting as ViT, and subsequent classification training similar to [Sec.4.1](https://ar5iv.org/html/2403.02308#S4.SS1 \"4.1 Image Classification ‣ 4 Experiments ‣ Vision-RWKV: Efficient and Scalable Visual Perception with RWKV-Like Architectures\"), our VRWKV-L achieves a top-1 accuracy improvement from 86.0% to 86.2% on ImageNet-1K val, showing the ability to acquire visual prior from masked image modeling.\n\n![Refer to caption](https://ar5iv.org/html/2403.02308/assets/x3.png)Figure 3: Comparison of effective receptive field (ERF) and attention runtime. (a) ERF for ViT and VRWKV in different settings. “No Shift” means no shift is used in spatial-mix and channel-mix modules. “RWKV Attn” means the original RWKV attention \\[ [35](https://ar5iv.org/html/2403.02308#bib.bib35 \"\")\\] without our modifications. Our VRWKV with Q-Shift and Bi-WKV has a more comprehensive ERF than other counterparts. (b) Attention runtime of inference (left) and forward ++ backward (right) tested on an Nvidia A100 GPU.\n\n## 5 Conclusion\n\nWe propose Vision-RWKV (VRWKV), a vision encoder with a linear computational complexity attention mechanism. We demonstrate its capability to be an alternative backbone to ViT in comprehensive vision tasks including classification, dense predictions, and masked image modeling pre-training. With comparable performance and scalability, VRWKV exhibits lower computational complexity and memory consumption. Benefiting from its low complexity, VRWKV can achieve better performance in the tasks that ViT\nstruggling to afford the high computational overhead of global attention. We hope VRWKV will be an efficient and low-cost alternative to ViT, showcasing the powerful potential of linear complexity transformers in vision fields.\n\n## References\n\n- \\[1\\]\nAli, A., Touvron, H., Caron, M., Bojanowski, P., Douze, M., Joulin, A., Laptev, I., Neverova, N., Synnaeve, G., Verbeek, J., et al.: Xcit: Cross-covariance image transformers. NeurIPS 34 (2021)\n\n- \\[2\\]\nBa, J.L., Kiros, J.R., Hinton, G.E.: Layer normalization. arXiv preprint arXiv:1607.06450 (2016)\n\n- \\[3\\]\nBrown, T., Mann, B., Ryder, N., Subbiah, M., Kaplan, J.D., Dhariwal, P., Neelakantan, A., Shyam, P., Sastry, G., Askell, A., et al.: Language models are few-shot learners. NeurIPS 33, 1877–1901 (2020)\n\n- \\[4\\]\nChen, Z., Duan, Y., Wang, W., He, J., Lu, T., Dai, J., Qiao, Y.: Vision transformer adapter for dense predictions (2023)\n\n- \\[5\\]\nDai, J., Qi, H., Xiong, Y., Li, Y., Zhang, G., Hu, H., Wei, Y.: Deformable convolutional networks. In: ICCV. pp. 764–773 (2017)\n\n- \\[6\\]\nDai, J., Shi, M., Wang, W., Wu, S., Xing, L., Wang, W., Zhu, X., Lu, L., Zhou, J., Wang, X., et al.: Demystify transformers & convolutions in modern image deep networks. arXiv preprint arXiv:2211.05781 (2022)\n\n- \\[7\\]\nDao, T., Fu, D., Ermon, S., Rudra, A., Ré, C.: Flashattention: Fast and memory-efficient exact attention with io-awareness. NeurIPS 35, 16344–16359 (2022)\n\n- \\[8\\]\nDeng, J., Dong, W., Socher, R., Li, L.J., Li, K., Fei-Fei, L.: Imagenet: A large-scale hierarchical image database. In: CVPR. pp. 248–255 (2009)\n\n- \\[9\\]\nDevlin, J., Chang, M.W., Lee, K., Toutanova, K.: Bert: Pre-training of deep bidirectional transformers for language understanding. arXiv preprint arXiv:1810.04805 (2018)\n\n- \\[10\\]\nDing, J., Ma, S., Dong, L., Zhang, X., Huang, S., Wang, W., Zheng, N., Wei, F.: Longnet: Scaling transformers to 1,000,000,000 tokens. arXiv preprint arXiv:2307.02486 (2023)\n\n- \\[11\\]\nDing, X., Zhang, X., Han, J., Ding, G.: Scaling up your kernels to 31x31: Revisiting large kernel design in cnns. In: CVPR. pp. 11963–11975 (2022)\n\n- \\[12\\]\nDosovitskiy, A., Beyer, L., Kolesnikov, A., Weissenborn, D., Zhai, X., Unterthiner, T., Dehghani, M., Minderer, M., Heigold, G., Gelly, S., et al.: An image is worth 16x16 words: Transformers for image recognition at scale. In: ICLR (2020)\n\n- \\[13\\]\nElman, J.L.: Finding structure in time. Cognitive Science 14(2), 179–211 (1990)\n\n- \\[14\\]\nFan, Q., Huang, H., Chen, M., Liu, H., He, R.: Rmt: Retentive networks meet vision transformers. arXiv preprint arXiv:2309.11523 (2023)\n\n- \\[15\\]\nGu, A., Dao, T.: Mamba: Linear-time sequence modeling with selective state spaces. arXiv preprint arXiv:2312.00752 (2023)\n\n- \\[16\\]\nGu, A., Goel, K., Ré, C.: Efficiently modeling long sequences with structured state spaces. arXiv preprint arXiv:2111.00396 (2021)\n\n- \\[17\\]\nGu, A., Johnson, I., Goel, K., Saab, K., Dao, T., Rudra, A., Ré, C.: Combining recurrent, convolutional, and continuous-time models with linear state space layers. NeurIPS 34, 572–585 (2021)\n\n- \\[18\\]\nHe, K., Chen, X., Xie, S., Li, Y., Dollár, P., Girshick, R.: Masked autoencoders are scalable vision learners. arXiv preprint arXiv:2111.06377 (2021)\n\n- \\[19\\]\nHe, K., Gkioxari, G., Dollár, P., Girshick, R.: Mask r-cnn. In: ICCV. pp. 2961–2969 (2017)\n\n- \\[20\\]\nHe, K., Zhang, X., Ren, S., Sun, J.: Deep residual learning for image recognition. In: CVPR. pp. 770–778 (2016)\n\n- \\[21\\]\nHu, J., Shen, L., Sun, G.: Squeeze-and-excitation networks. In: CVPR. pp. 7132–7141 (2018)\n\n- \\[22\\]\nHuang, G., Liu, Z., Van Der Maaten, L., Weinberger, K.Q.: Densely connected convolutional networks. In: CVPR. pp. 4700–4708 (2017)\n\n- \\[23\\]\nKrizhevsky, A., Sutskever, I., Hinton, G.E.: Imagenet classification with deep convolutional neural networks. NeurIPS 25 (2012)\n\n- \\[24\\]\nLeCun, Y., Bengio, Y., et al.: Convolutional networks for images, speech, and time series. The Handbook of Brain Theory and Neural Networks 3361(10),  1995 (1995)\n\n- \\[25\\]\nLewis, M., Liu, Y., Goyal, N., Ghazvininejad, M., Mohamed, A., Levy, O., Stoyanov, V., Zettlemoyer, L.: Bart: Denoising sequence-to-sequence pre-training for natural language generation, translation, and comprehension. arXiv preprint arXiv:1910.13461 (2019)\n\n- \\[26\\]\nLi, X., Wang, W., Hu, X., Yang, J.: Selective kernel networks. In: CVPR. pp. 510–519 (2019)\n\n- \\[27\\]\nLin, T.Y., Maire, M., Belongie, S., Hays, J., Perona, P., Ramanan, D., Dollár, P., Zitnick, C.L.: Microsoft coco: Common objects in context. In: ECCV. pp. 740–755 (2014)\n\n- \\[28\\]\nLiu, Y., Ott, M., Goyal, N., Du, J., Joshi, M., Chen, D., Levy, O., Lewis, M., Zettlemoyer, L., Stoyanov, V.: Roberta: A robustly optimized bert pretraining approach. arXiv preprint arXiv:1907.11692 (2019)\n\n- \\[29\\]\nLiu, Y., Tian, Y., Zhao, Y., Yu, H., Xie, L., Wang, Y., Ye, Q., Liu, Y.: Vmamba: Visual state space model. arXiv preprint arXiv:2401.10166 (2024)\n\n- \\[30\\]\nLiu, Z., Lin, Y., Cao, Y., Hu, H., Wei, Y., Zhang, Z., Lin, S., Guo, B.: Swin transformer: Hierarchical vision transformer using shifted windows. In: ICCV. pp. 10012–10022 (2021)\n\n- \\[31\\]\nLiu, Z., Mao, H., Wu, C.Y., Feichtenhofer, C., Darrell, T., Xie, S.: A convnet for the 2020s. In: CVPR. pp. 11976–11986 (2022)\n\n- \\[32\\]\nLoshchilov, I., Hutter, F.: Sgdr: Stochastic gradient descent with warm restarts. arXiv preprint arXiv:1608.03983 (2016)\n\n- \\[33\\]\nLoshchilov, I., Hutter, F.: Decoupled weight decay regularization. arXiv preprint arXiv:1711.05101 (2017)\n\n- \\[34\\]\nMemory, L.S.T.: Long short-term memory. Neural Computation 9(8), 1735–1780 (2010)\n\n- \\[35\\]\nPeng, B., Alcaide, E., Anthony, Q., Albalak, A., Arcadinho, S., Cao, H., Cheng, X., Chung, M., Grella, M., GV, K.K., et al.: Rwkv: Reinventing rnns for the transformer era. arXiv preprint arXiv:2305.13048 (2023)\n\n- \\[36\\]\nQin, Z., Han, X., Sun, W., He, B., Li, D., Li, D., Dai, Y., Kong, L., Zhong, Y.: Toeplitz neural network for sequence modeling. arXiv preprint arXiv:2305.04749 (2023)\n\n- \\[37\\]\nQin, Z., Yang, S., Zhong, Y.: Hierarchically gated recurrent neural network for sequence modeling. Advances in Neural Information Processing Systems 36 (2024)\n\n- \\[38\\]\nRadford, A., Narasimhan, K., Salimans, T., Sutskever, I.: Improving language understanding by generative pre-training (2018)\n\n- \\[39\\]\nRadford, A., Wu, J., Child, R., Luan, D., Amodei, D., Sutskever, I., et al.: Language models are unsupervised multitask learners. OpenAI blog 1(8),  9 (2019)\n\n- \\[40\\]\nRaffel, C., Shazeer, N., Roberts, A., Lee, K., Narang, S., Matena, M., Zhou, Y., Li, W., Liu, P.J.: Exploring the limits of transfer learning with a unified text-to-text transformer. arXiv preprint arXiv:1910.10683 (2019)\n\n- \\[41\\]\nSimonyan, K., Zisserman, A.: Very deep convolutional networks for large-scale image recognition. arXiv preprint arXiv:1409.1556 (2014)\n\n- \\[42\\]\nSmith, J.T., Warrington, A., Linderman, S.W.: Simplified state space layers for sequence modeling. arXiv preprint arXiv:2208.04933 (2022)\n\n- \\[43\\]\nSmith, S., Patwary, M., Norick, B., LeGresley, P., Rajbhandari, S., Casper, J., Liu, Z., Prabhumoye, S., Zerveas, G., Korthikanti, V., et al.: Using deepspeed and megatron to train megatron-turing nlg 530b, a large-scale generative language model. arXiv preprint arXiv:2201.11990 (2022)\n\n- \\[44\\]\nSteiner, A., Kolesnikov, A., Zhai, X., Wightman, R., Uszkoreit, J., Beyer, L.: How to train your vit? data, augmentation, and regularization in vision transformers. arXiv preprint arXiv:2106.10270 (2021)\n\n- \\[45\\]\nStickland, A.C., Murray, I.: Bert and pals: Projected attention layers for efficient adaptation in multi-task learning. In: ICML. pp. 5986–5995 (2019)\n\n- \\[46\\]\nSun, W., Qin, Z., Deng, H., Wang, J., Zhang, Y., Zhang, K., Barnes, N., Birchfield, S., Kong, L., Zhong, Y.: Vicinity vision transformer. IEEE Transactions on Pattern Analysis and Machine Intelligence (2023)\n\n- \\[47\\]\nSun, Y., Dong, L., Huang, S., Ma, S., Xia, Y., Xue, J., Wang, J., Wei, F.: Retentive network: A successor to transformer for large language models. arXiv preprint arXiv:2307.08621 (2023)\n\n- \\[48\\]\nSzegedy, C., Liu, W., Jia, Y., Sermanet, P., Reed, S., Anguelov, D., Erhan, D., Vanhoucke, V., Rabinovich, A.: Going deeper with convolutions. In: CVPR. pp. 1–9 (2015)\n\n- \\[49\\]\nTouvron, H., Cord, M., Douze, M., Massa, F., Sablayrolles, A., Jégou, H.: Training data-efficient image transformers & distillation through attention. In: ICML. pp. 10347–10357 (2021)\n\n- \\[50\\]\nTouvron, H., Cord, M., Sablayrolles, A., Synnaeve, G., Jégou, H.: Going deeper with image transformers. In: ICCV. pp. 32–42 (2021)\n\n- \\[51\\]\nVaswani, A., Ramachandran, P., Srinivas, A., Parmar, N., Hechtman, B., Shlens, J.: Scaling local self-attention for parameter efficient visual backbones. In: CVPR. pp. 12894–12904 (2021)\n\n- \\[52\\]\nVaswani, A., Shazeer, N., Parmar, N., Uszkoreit, J., Jones, L., Gomez, A.N., Kaiser, Ł., Polosukhin, I.: Attention is all you need. NeurIPS 30 (2017)\n\n- \\[53\\]\nWang, J., Zhu, W., Wang, P., Yu, X., Liu, L., Omar, M., Hamid, R.: Selective structured state-spaces for long-form video understanding. In: CVPR. pp. 6387–6397 (2023)\n\n- \\[54\\]\nWang, S., Li, B.Z., Khabsa, M., Fang, H., Ma, H.: Linformer: Self-attention with linear complexity. arXiv preprint arXiv:2006.04768 (2020)\n\n- \\[55\\]\nWang, W., Dai, J., Chen, Z., Huang, Z., Li, Z., Zhu, X., Hu, X., Lu, T., Lu, L., Li, H., et al.: Internimage: Exploring large-scale vision foundation models with deformable convolutions. In: CVPR. pp. 14408–14419 (2023)\n\n- \\[56\\]\nWang, W., Xie, E., Li, X., Fan, D.P., Song, K., Liang, D., Lu, T., Luo, P., Shao, L.: Pyramid vision transformer: A versatile backbone for dense prediction without convolutions. In: ICCV. pp. 568–578 (2021)\n\n- \\[57\\]\nWang, W., Xie, E., Li, X., Fan, D.P., Song, K., Liang, D., Lu, T., Luo, P., Shao, L.: Pvtv2: Improved baselines with pyramid vision transformer. CVMJ pp. 1–10 (2022)\n\n- \\[58\\]\nWu, S., Wu, T., Tan, H., Guo, G.: Pale transformer: A general vision transformer backbone with pale-shaped attention. In: AAAI. vol. 36, pp. 2731–2739 (2022)\n\n- \\[59\\]\nXiao, T., Liu, Y., Zhou, B., Jiang, Y., Sun, J.: Unified perceptual parsing for scene understanding. In: ECCV. pp. 418–434 (2018)\n\n- \\[60\\]\nXiong, Y., Li, Z., Chen, Y., Wang, F., Zhu, X., Luo, J., Wang, W., Lu, T., Li, H., Qiao, Y., et al.: Efficient deformable convnets: Rethinking dynamic and sparse operator for vision applications. arXiv preprint arXiv:2401.06197 (2024)\n\n- \\[61\\]\nZhang, Y., Sun, Q., Zhou, Y., He, Z., Yin, Z., Wang, K., Sheng, L., Qiao, Y., Shao, J., Liu, Z.: Bamboo: Building mega-scale vision dataset continually with human-machine synergy. arXiv preprint arXiv:2203.07845 (2022)\n\n- \\[62\\]\nZhou, B., Zhao, H., Puig, X., Fidler, S., Barriuso, A., Torralba, A.: Scene parsing through ade20k dataset. In: CVPR. pp. 633–641 (2017)\n\n- \\[63\\]\nZhu, L., Liao, B., Zhang, Q., Wang, X., Liu, W., Wang, X.: Vision mamba: Efficient visual representation learning with bidirectional state space model. arXiv preprint arXiv:2401.09417 (2024)\n\n- \\[64\\]\nZhu, X., Hu, H., Lin, S., Dai, J.: Deformable convnets v2: More deformable, better results. In: CVPR. pp. 9308–9316 (2019)\n\n\n[◄](https://ar5iv.org/html/2403.02307) [![ar5iv homepage](https://ar5iv.org/assets/ar5iv.png)](https://ar5iv.org/) [Feeling\\\\\n\\\\\nlucky?](https://ar5iv.org/feeling_lucky) [Conversion\\\\\n\\\\\nreport](https://ar5iv.org/log/2403.02308) [Report\\\\\n\\\\\nan issue](https://github.com/dginev/ar5iv/issues/new?template=improve-article--arxiv-id-.md&title=Improve+article+2403.02308) [View original\\\\\n\\\\\non arXiv](https://arxiv.org/abs/2403.02308) [►](https://ar5iv.org/html/2403.02309)",
+  "sections": {
+    "1 Introduction": {
+      "content": "Vision Transformers (ViTs) \\[ [12], [49], [52], [44], [18]\\], renowned for their flexibility and global information processing capabilities, have established new benchmarks in a variety of vision tasks in the past few years.\nHowever, the quadratic computational complexity associated with ViTs limits their ability to efficiently process high-resolution images and lengthy sequences, posing a significant barrier to their broader application.\nAs a result, the exploration of a vision architecture that integrates the versatility and comprehensive processing strengths of ViTs, while reducing computational demands, has emerged as a crucial area of research.\n\n![Refer to caption]Figure 1: Performance and efficiency comparison of Vision-RWKV (VRWKV) and ViT. (a) APbsuperscriptAPb\\\\rm AP^{b} comparison of VRWKV and ViT \\[ [49]\\] with window attention and global attention on the COCO \\[ [27]\\] dataset. (b) Inference speed comparison of VRWKV-T and ViT-T across input resolutions ranging from 224 to 2048. (c) GPU memory comparison of VRWKV-T and ViT-T across input resolutions from 224 to 2048.\n\nIn recent developments within natural language processing (NLP), models like RWKV \\[ [35]\\] and Mamba \\[ [15]\\] have emerged as popular solutions for achieving heightened efficiency and processing lengthy texts.\nThese innovative models have demonstrated attributes similar to transformers \\[ [9], [40], [43], [28], [38], [39], [3], [25], [45]\\] in NLP tasks, including the ability to handle long-range dependencies and parallel processing.\nFurthermore, they have also proven to be scalable, performing well with large-scale NLP datasets.\nConsidering the significant differences between image and text modalities, it remains challenging to envision these methods entirely supplanting ViTs for vision-related tasks.\nIt is imperative to conduct an in-depth analysis of how these models are applied to vision tasks, examining their scalability concerning data and parameters, their efficiency in handling sparse visual data, such as masked image modeling, and the necessary techniques to ensure model stability during scaling up.\n\nIn this work, we introduce Vision-RWKV (VRWKV), which is designed to adapt the RWKV architecture for vision tasks. This adaptation preserves the core structure and benefits of RWKV \\[ [35]\\] while integrating critical modifications to tailor it for processing visual data.\nSpecifically, we introduce a quad-directional shift (Q-Shift) tailed for vision tasks and modify the original causal RWKV attention mechanism to a bidirectional global attention mechanism.\nThe Q-Shift operation expands the semantic range of individual tokens, while the bidirectional attention enables the calculation of global attention within linear computational complexity in an RNN form forward and backward.\nWe primarily make modifications to the exponent in the RWKV attention mechanism, releasing the limitations of the decay vector and transforming the absolute positional bias into a relative bias. These changes enhance the model’s capability while ensuring scalability and stability.\nIn this way, our model inherits the efficiency of RWKV in handling global information and sparse inputs, while also being able to model the local concept of vision tasks.\nWe implement layer scale \\[ [50]\\] and layer normalization \\[ [2]\\] where needed to stabilize the model’s output across different scales. These adjustments significantly improve the model’s stability when scaling up to a larger size.\n\nBuilding on the aforementioned design, we develop a range of VRWKV models with different model scales, spanning from the VRWKV-Tiny (6M) to the VRWKV-Large (335M).\nThese models are trained using large-scale datasets such as ImageNet-1K \\[ [8]\\] and ImageNet-22K \\[ [8]\\].\nWe train them using both common supervised classification and sparse input MAE methods \\[ [18]\\] and evaluate their performance on visual perception tasks, including classification, detection, and segmentation.\nUnder the same settings, VRWKV has comparable performance to ViT in these tasks with lower computational costs while maintaining stable scalability.\nThis achievement enables VRWKV training parallelism, high flexibility, excellent performance, and low inference cost simultaneously, making it a promising alternative to ViT in a wide range of vision tasks, particularly in high-resolution scenarios.\n\nIn this paper, our main contributions are:\n\n(1) We propose VRWKV as a low-cost alternative to ViT, achieving comprehensive substitution with lower computational costs. Our model not only retains the advantages of ViT, including the capability to capture long-range dependencies and flexibility in handling sparse inputs but also reduces complexity to a linear level. This significant reduction eliminates the need for window-based attention in processing high-resolution images, making VRWKV a more efficient and scalable solution for vision tasks.\n\n(2) To adapt to vision tasks, we introduce bidirectional global attention and a novel token shift method called Q-Shift, enabling the achievement of linear complexity in global attention. To ensure stable scalability, we make several efforts, including using a relative positional bias in the attention mechanism to avoid overflow, adopting layer scale in our model, and adding extra layer normalization in the calculation of key matrices.\n\n(3) Our model surpasses window-based ViTs and is comparable to global attention ViTs, demonstrating lower FLOPs and faster processing speeds as resolution increases.\nNotably, VRWKV-T achieves 75.1% top-1 accuracy trained only on the ImageNet-1K \\[ [8]\\], outperforming DeiT-T \\[ [49]\\] by 2.9 points. With large-scale parameters ( _i.e_., 335M) and training data ( _i.e_., ImageNet-22K),\nthe top-1 accuracy of VRWKV-L is further boosted to 86.0%, which is higher than ViT-L \\[ [12]\\] (86.04 _vs. missing_ 85.15). In addition, on COCO \\[ [27]\\], a challenging downstream benchmark, our best model VRWKV-L achieves 50.6% box mAP, 1.9 points better than ViT-L (50.6 _vs. missing_ 48.7).",
+      "citations": [
+        {
+          "start_pos": 30,
+          "end_pos": 34,
+          "text": "[12]",
+          "paper_id": "bib.bib12",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 36,
+          "end_pos": 40,
+          "text": "[49]",
+          "paper_id": "bib.bib49",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 42,
+          "end_pos": 46,
+          "text": "[52]",
+          "paper_id": "bib.bib52",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 48,
+          "end_pos": 52,
+          "text": "[44]",
+          "paper_id": "bib.bib44",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 54,
+          "end_pos": 58,
+          "text": "[18]",
+          "paper_id": "bib.bib18",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 822,
+          "end_pos": 826,
+          "text": "[49]",
+          "paper_id": "bib.bib49",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 887,
+          "end_pos": 891,
+          "text": "[27]",
+          "paper_id": "bib.bib27",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1182,
+          "end_pos": 1186,
+          "text": "[35]",
+          "paper_id": "bib.bib35",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1202,
+          "end_pos": 1206,
+          "text": "[15]",
+          "paper_id": "bib.bib15",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1389,
+          "end_pos": 1392,
+          "text": "[9]",
+          "paper_id": "bib.bib9",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1394,
+          "end_pos": 1398,
+          "text": "[40]",
+          "paper_id": "bib.bib40",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1400,
+          "end_pos": 1404,
+          "text": "[43]",
+          "paper_id": "bib.bib43",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1406,
+          "end_pos": 1410,
+          "text": "[28]",
+          "paper_id": "bib.bib28",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1412,
+          "end_pos": 1416,
+          "text": "[38]",
+          "paper_id": "bib.bib38",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1418,
+          "end_pos": 1422,
+          "text": "[39]",
+          "paper_id": "bib.bib39",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1424,
+          "end_pos": 1427,
+          "text": "[3]",
+          "paper_id": "bib.bib3",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1429,
+          "end_pos": 1433,
+          "text": "[25]",
+          "paper_id": "bib.bib25",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1435,
+          "end_pos": 1439,
+          "text": "[45]",
+          "paper_id": "bib.bib45",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 2308,
+          "end_pos": 2312,
+          "text": "[35]",
+          "paper_id": "bib.bib35",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 3292,
+          "end_pos": 3296,
+          "text": "[50]",
+          "paper_id": "bib.bib50",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 3326,
+          "end_pos": 3329,
+          "text": "[2]",
+          "paper_id": "bib.bib2",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 3738,
+          "end_pos": 3741,
+          "text": "[8]",
+          "paper_id": "bib.bib8",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 3764,
+          "end_pos": 3767,
+          "text": "[8]",
+          "paper_id": "bib.bib8",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 3861,
+          "end_pos": 3865,
+          "text": "[18]",
+          "paper_id": "bib.bib18",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 5621,
+          "end_pos": 5624,
+          "text": "[8]",
+          "paper_id": "bib.bib8",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 5652,
+          "end_pos": 5656,
+          "text": "[49]",
+          "paper_id": "bib.bib49",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 5850,
+          "end_pos": 5854,
+          "text": "[12]",
+          "paper_id": "bib.bib12",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 5910,
+          "end_pos": 5914,
+          "text": "[27]",
+          "paper_id": "bib.bib27",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        }
+      ]
+    },
+    "2 Related Works": {
+      "content": "### 2.1 Vision Encoder\n\nRecent advances in vision encoders have significantly pushed the boundaries of computer vision, demonstrating remarkable performance across a range of tasks.\nConvolutional neural networks (CNNs) served as the foundational model in computer vision. The advancement of computational resources, such as GPUs, has enabled the successful training of stacked convolutional blocks like AlexNet \\[ [23]\\] and VGG \\[ [41]\\] on large-scale image classification datasets ( _e.g_., ImageNet \\[ [8]\\]). This development paved the way for deeper and more sophisticated convolutional neural architectures, including GoogleNet \\[ [48]\\], ResNet \\[ [20]\\], and DenseNet \\[ [22]\\].\n\nIn addition to these innovations, significant advancements have also been made with architectures like SENet \\[ [21]\\], which introduced a channel attention mechanism to enhance model sensitivity to informative features. Similarly, SKNet \\[ [26]\\] merged multiple kernel sizes to adjust the receptive field adaptively.\nFurther extending the CNN paradigm, recent models such as RepLKNet \\[ [11]\\] and ConvNeXt \\[ [31]\\] have refined the convolutional layers to improve efficiency and accuracy, while InternImage \\[ [55]\\] explored the strategies to scale up the convolution-based vision model.\n\nDrawing inspiration from the effectiveness of self-attention layers and transformer architectures in the NLP field, the Vision Transformer (ViT) \\[ [12]\\] applied a transformer framework on image patches, offering a global receptive field and dynamic spatial aggregation.\nDue to the quadratically increasing computational complexity of the vanilla attention mechanism, approaches like PVT \\[ [56], [57]\\] and Linformer \\[ [54]\\] implemented global attention on down-sampled feature maps, whereas other approaches like Swin \\[ [58]\\] and HaloNet \\[ [51], [6]\\] introduced sampling techniques to enlarge the receptive field.\n\nAnother research direction involved replacing self-attention layers in models with linear complexity layers. Representative works in this domain include LongNet \\[ [10]\\], RWKV \\[ [35]\\], RetNet \\[ [47]\\], and Mamba \\[ [15]\\], though few have concentrated on vision-related applications. Concurrently, attempts like Vim \\[ [63]\\] and VMamba \\[ [29]\\] have sought to integrate these linear attention layers into the vision domain. However, these endeavors have only been experimented with on small-scale models, and it remains uncertain whether their efficiency can scale up to larger models.\n\n### 2.2 Feature Aggregation Mechanism\n\nThe research on feature aggregation has received significant attention in the field of artificial intelligence.\nFor visual data processing, convolutional operators \\[ [24]\\], known for their parameter sharing and local perception, enabled efficient handling of large-scale data through sliding computation. Despite their advantages, traditional CNN operators faced challenges in modeling long-range dependencies.\nTo overcome this issue, advanced convolutional operators, such as the deformable convolution \\[ [5], [64], [60]\\], have improved the flexibility of CNN operators, enhancing their long-range modeling capability.\n\nAs for the field of NLP, RNN-based operators \\[ [13], [34], [37]\\] have historically dominated because of their effectiveness in sequence modeling. RNNs and LSTMs excel in capturing temporal dependencies, making them suitable for tasks requiring an understanding of sequence dynamics.\nSubsequently, a significant shift occurred.\nThe introduction of the transformer architecture \\[ [52]\\] marked a turning point, with both NLP and computer vision fields shifting focus toward attention-based feature aggregation.\nThe global attention mechanism overcomes the limitations of CNNs in modeling long-range dependencies and the shortcomings of RNNs in parallel computation while coming at a high computational cost.\n\nTo address the high computational cost of attention operators while modeling long sequences, researchers have introduced innovations such as window attention and spatial reduction attention.\nWindow attention \\[ [30], [51], [6]\\] restricts the self-attention computation within local windows, drastically reducing the computational complexity while preserving the receptive field through window-level interaction.\nSpatial reduction attention \\[ [56], [57]\\], on the other hand, reduces the dimensionality of the feature space before applying the attention mechanism, effectively decreasing the computational requirements without significantly degrading the model’s performance.\n\nIn addition to the efforts to optimize the global attention mechanism, various operators with linear complexity \\[ [35], [47], [15], [36], [46]\\] have also been explored. For instance, RWKV \\[ [35]\\] and RetNet \\[ [47]\\] employed exponential decay to model global information efficiently while SSMs \\[ [16], [17], [42], [53]\\] also exhibited linear complexity concerning sequence length and modification in Mamba \\[ [15]\\] enable them to be input-dependent. Besides, XCA \\[ [1]\\] achieved linear complexity by calculating the cross-variance between input tokens. However, the low efficiency of information interaction between tokens makes the need for the assistance of additional modules necessary to complete a comprehensive feature aggregation.\nDespite some concurrent efforts \\[ [29], [63], [14]\\], adapting these NLP-derived techniques to vision tasks remains a challenge in maintaining stable training across larger and more complex vision models.\n\n![Refer to caption]Figure 2: Overall architecture of Vision-RWKV (VRWKV).\n(a) The VRWKV architecture includes L𝐿L identical VRWKV encoder layers, an average pooling layer, and a linear prediction head. (b) The details of the VRWKV encoder layer. Q-Shift denotes the quad-directional shift method tailed for vision tasks. The “Bi-WKV” module served as a bidirectional RNN cell or a global attention mechanism.",
+      "citations": [
+        {
+          "start_pos": 414,
+          "end_pos": 418,
+          "text": "[23]",
+          "paper_id": "bib.bib23",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 432,
+          "end_pos": 436,
+          "text": "[41]",
+          "paper_id": "bib.bib41",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 506,
+          "end_pos": 509,
+          "text": "[8]",
+          "paper_id": "bib.bib8",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 638,
+          "end_pos": 642,
+          "text": "[48]",
+          "paper_id": "bib.bib48",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 656,
+          "end_pos": 660,
+          "text": "[20]",
+          "paper_id": "bib.bib20",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 680,
+          "end_pos": 684,
+          "text": "[22]",
+          "paper_id": "bib.bib22",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 801,
+          "end_pos": 805,
+          "text": "[21]",
+          "paper_id": "bib.bib21",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 930,
+          "end_pos": 934,
+          "text": "[26]",
+          "paper_id": "bib.bib26",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1078,
+          "end_pos": 1082,
+          "text": "[11]",
+          "paper_id": "bib.bib11",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1101,
+          "end_pos": 1105,
+          "text": "[31]",
+          "paper_id": "bib.bib31",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1203,
+          "end_pos": 1207,
+          "text": "[55]",
+          "paper_id": "bib.bib55",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1431,
+          "end_pos": 1435,
+          "text": "[12]",
+          "paper_id": "bib.bib12",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1675,
+          "end_pos": 1679,
+          "text": "[56]",
+          "paper_id": "bib.bib56",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1681,
+          "end_pos": 1685,
+          "text": "[57]",
+          "paper_id": "bib.bib57",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1705,
+          "end_pos": 1709,
+          "text": "[54]",
+          "paper_id": "bib.bib54",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1809,
+          "end_pos": 1813,
+          "text": "[58]",
+          "paper_id": "bib.bib58",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1831,
+          "end_pos": 1835,
+          "text": "[51]",
+          "paper_id": "bib.bib51",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1837,
+          "end_pos": 1840,
+          "text": "[6]",
+          "paper_id": "bib.bib6",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 2071,
+          "end_pos": 2075,
+          "text": "[10]",
+          "paper_id": "bib.bib10",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 2087,
+          "end_pos": 2091,
+          "text": "[35]",
+          "paper_id": "bib.bib35",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 2105,
+          "end_pos": 2109,
+          "text": "[47]",
+          "paper_id": "bib.bib47",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 2126,
+          "end_pos": 2130,
+          "text": "[15]",
+          "paper_id": "bib.bib15",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 2230,
+          "end_pos": 2234,
+          "text": "[63]",
+          "paper_id": "bib.bib63",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 2251,
+          "end_pos": 2255,
+          "text": "[29]",
+          "paper_id": "bib.bib29",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 2706,
+          "end_pos": 2710,
+          "text": "[24]",
+          "paper_id": "bib.bib24",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 3048,
+          "end_pos": 3051,
+          "text": "[5]",
+          "paper_id": "bib.bib5",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 3053,
+          "end_pos": 3057,
+          "text": "[64]",
+          "paper_id": "bib.bib64",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 3059,
+          "end_pos": 3063,
+          "text": "[60]",
+          "paper_id": "bib.bib60",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 3212,
+          "end_pos": 3216,
+          "text": "[13]",
+          "paper_id": "bib.bib13",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 3218,
+          "end_pos": 3222,
+          "text": "[34]",
+          "paper_id": "bib.bib34",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 3224,
+          "end_pos": 3228,
+          "text": "[37]",
+          "paper_id": "bib.bib37",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 3545,
+          "end_pos": 3549,
+          "text": "[52]",
+          "paper_id": "bib.bib52",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 4085,
+          "end_pos": 4089,
+          "text": "[30]",
+          "paper_id": "bib.bib30",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 4091,
+          "end_pos": 4095,
+          "text": "[51]",
+          "paper_id": "bib.bib51",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 4097,
+          "end_pos": 4100,
+          "text": "[6]",
+          "paper_id": "bib.bib6",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 4318,
+          "end_pos": 4322,
+          "text": "[56]",
+          "paper_id": "bib.bib56",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 4324,
+          "end_pos": 4328,
+          "text": "[57]",
+          "paper_id": "bib.bib57",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 4667,
+          "end_pos": 4671,
+          "text": "[35]",
+          "paper_id": "bib.bib35",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 4673,
+          "end_pos": 4677,
+          "text": "[47]",
+          "paper_id": "bib.bib47",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 4679,
+          "end_pos": 4683,
+          "text": "[15]",
+          "paper_id": "bib.bib15",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 4685,
+          "end_pos": 4689,
+          "text": "[36]",
+          "paper_id": "bib.bib36",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 4691,
+          "end_pos": 4695,
+          "text": "[46]",
+          "paper_id": "bib.bib46",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 4745,
+          "end_pos": 4749,
+          "text": "[35]",
+          "paper_id": "bib.bib35",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 4766,
+          "end_pos": 4770,
+          "text": "[47]",
+          "paper_id": "bib.bib47",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 4854,
+          "end_pos": 4858,
+          "text": "[16]",
+          "paper_id": "bib.bib16",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 4860,
+          "end_pos": 4864,
+          "text": "[17]",
+          "paper_id": "bib.bib17",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 4866,
+          "end_pos": 4870,
+          "text": "[42]",
+          "paper_id": "bib.bib42",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 4872,
+          "end_pos": 4876,
+          "text": "[53]",
+          "paper_id": "bib.bib53",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 4968,
+          "end_pos": 4972,
+          "text": "[15]",
+          "paper_id": "bib.bib15",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 5026,
+          "end_pos": 5029,
+          "text": "[1]",
+          "paper_id": "bib.bib1",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 5335,
+          "end_pos": 5339,
+          "text": "[29]",
+          "paper_id": "bib.bib29",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 5341,
+          "end_pos": 5345,
+          "text": "[63]",
+          "paper_id": "bib.bib63",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 5347,
+          "end_pos": 5351,
+          "text": "[14]",
+          "paper_id": "bib.bib14",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        }
+      ]
+    },
+    "3 Vision-RWKV": {
+      "content": "### 3.1 Overall Architecture\n\nIn this section, we propose Vision-RWKV (VRWKV), an efficient vision encoder with a linear complexity attention mechanism.\nOur principle is to preserve the advantages of the original RWKV architecture \\[ [35]\\], making only necessary modifications to enable its flexible application in vision tasks, supporting sparse input, and ensuring the stability of the training process after scaling up.\nAn overview of our VRWKV is depicted in [Fig.2]In 2.2 Feature Aggregation Mechanism ‣ 2 Related Works ‣ Vision-RWKV: Efficient and Scalable Visual Perception with RWKV-Like Architectures\").\n\nVRWKV adopts a block-stacked image encoder design like ViT, where each block consists of a spatial-mix module and a channel-mix module. The spatial-mix module functions as an attention mechanism, performing linear complexity global attention computation while the channel mix module serves as a feed-forward network (FFN), performing feature fusion in the channel dimension. The entire VRWKV includes a patch embedding layer and a stack of L𝐿L identical VRWKV encoder layers, where each layer maintains the input resolution.\n\nData Flow.\nFirst, we transform the H×W×3𝐻𝑊3H\\\\times W\\\\times 3 image into H​W/p2𝐻𝑊superscript𝑝2HW/p^{2} patches, where p𝑝p denotes the patch size. The patches after a linear projection add the position embedding to obtain image tokens of shape T×C𝑇𝐶T\\\\times C, where T=H​W/p2𝑇𝐻𝑊superscript𝑝2T=HW/p^{2} denotes the total number of tokens. These tokens are then input into the VRWKV encoder with L𝐿L layers.\n\nIn each layer, tokens are first fed into the spatial-mix module which plays the role of a global attention mechanism. Specifically, as shown in [Fig.2]In 2.2 Feature Aggregation Mechanism ‣ 2 Related Works ‣ Vision-RWKV: Efficient and Scalable Visual Perception with RWKV-Like Architectures\")(b), the input tokens are first shifted and fed into three parallel linear layers to obtain the matrices Rs,Ks,Vs∈ℝT×Csubscript𝑅𝑠subscript𝐾𝑠subscript𝑉𝑠superscriptℝ𝑇𝐶R\\_{s},K\\_{s},V\\_{s}\\\\in\\\\mathbb{R}^{T\\\\times C}:\n\n|     |     |     |     |\n| --- | --- | --- | --- |\n|  | Rs=Q​-​ShiftR​(X)​WR,Ks=Q​-​ShiftK​(X)​WK,Vs=Q​-​ShiftV​(X)​WV.formulae-sequencesubscript𝑅sQ-subscriptShift𝑅𝑋subscript𝑊𝑅formulae-sequencesubscript𝐾sQ-subscriptShift𝐾𝑋subscript𝑊𝐾subscript𝑉sQ-subscriptShift𝑉𝑋subscript𝑊𝑉\\\\displaystyle R\\_{\\\\text{s}}={\\\\rm Q\\\\mbox{-}Shift}\\_{R}(X)W\\_{R},~{}~{}~{}~{}K\\_{\\\\text{s}}={\\\\rm Q\\\\mbox{-}Shift}\\_{K}(X)W\\_{K},~{}~{}~{}~{}V\\_{\\\\text{s}}={\\\\rm Q\\\\mbox{-}Shift}\\_{V}(X)W\\_{V}. |  | (1) |\n\nHere, Kssubscript𝐾sK\\_{\\\\text{s}} and Vssubscript𝑉sV\\_{\\\\text{s}} are passed to calculate the global attention result w​k​v∈ℝT×C𝑤𝑘𝑣superscriptℝ𝑇𝐶wkv\\\\in\\\\mathbb{R}^{T\\\\times C} by a linear complexity bidirectional attention mechanism and multiplied with σ​(R)𝜎𝑅\\\\sigma(R) which controls the output Ossubscript𝑂sO\\_{\\\\text{s}} probability:\n\n|     |     |     |     |     |\n| --- | --- | --- | --- | --- |\n|  | Ossubscript𝑂s\\\\displaystyle O\\_{\\\\text{s}} | =(σ​(Rs)⊙w​k​v)​WO,absentdirect-product𝜎subscript𝑅s𝑤𝑘𝑣subscript𝑊𝑂\\\\displaystyle=(\\\\sigma(R\\_{\\\\text{s}})\\\\odot wkv)W\\_{O}, |  | (2) |\n|  | where​w​k​vwhere𝑤𝑘𝑣\\\\displaystyle\\\\text{where}\\ wkv | =Bi​-​WKV​(Ks,Vs).absentBi-WKVsubscript𝐾ssubscript𝑉s\\\\displaystyle=\\\\mathrm{Bi\\\\mbox{-}WKV}(K\\_{\\\\text{s}},V\\_{\\\\text{s}}). |  |\n\nOperator σ𝜎\\\\sigma denotes the sigmoid function, and ⊙direct-product\\\\odot means an element-wise multiplication is applied. The Q​-​ShiftQ-Shift\\\\rm Q\\\\mbox{-}Shift is a token shift function specially designed for the adaption of vision tasks.\nAfter an output linear projection, features are then stabilized using layer normalization \\[ [2]\\].\n\nSubsequently, the tokens are passed into the channel-mix module for a channel-wise fusion. Rcsubscript𝑅cR\\_{\\\\text{c}}, Kcsubscript𝐾cK\\_{\\\\text{c}} are obtained in a similar manner as spatial-mix:\n\n|     |     |     |     |\n| --- | --- | --- | --- |\n|  | Rc=Q​-​ShiftR​(X)​WR,Kc=Q​-​ShiftK​(X)​WK.formulae-sequencesubscript𝑅cQ-subscriptShift𝑅𝑋subscript𝑊𝑅subscript𝐾cQ-subscriptShift𝐾𝑋subscript𝑊𝐾\\\\displaystyle R\\_{\\\\text{c}}={\\\\rm Q\\\\mbox{-}Shift}\\_{R}(X)W\\_{R},~{}~{}~{}~{}K\\_{\\\\text{c}}={\\\\rm Q\\\\mbox{-}Shift}\\_{K}(X)W\\_{K}. |  | (3) |\n\nHere, Vcsubscript𝑉cV\\_{\\\\text{c}} is a linear projection of K𝐾K after the activation function and the output Ocsubscript𝑂cO\\_{\\\\text{c}} is also controlled by a gate mechanism σ​(Rc)𝜎subscript𝑅c\\\\sigma(R\\_{\\\\text{c}}) before the output projection:\n\n|     |     |     |     |     |\n| --- | --- | --- | --- | --- |\n|  | Ocsubscript𝑂c\\\\displaystyle O\\_{\\\\text{c}} | =(σ​(Rc)⊙Vc)​WO,absentdirect-product𝜎subscript𝑅csubscript𝑉csubscript𝑊𝑂\\\\displaystyle=(\\\\sigma(R\\_{\\\\text{c}})\\\\odot V\\_{\\\\text{c}})W\\_{O}, |  | (4) |\n|  | where​Vcwheresubscript𝑉c\\\\displaystyle\\\\text{where}\\ V\\_{\\\\text{c}} | =SquaredReLU​(Kc)​WV.absentSquaredReLUsubscript𝐾csubscript𝑊𝑉\\\\displaystyle=\\\\mathrm{SquaredReLU}(K\\_{\\\\text{c}})W\\_{V}. |  |\n\nSimultaneously, residual connections \\[ [20]\\] are established from the tokens to each normalization layer to ensure that training gradients do not vanish in deep networks.\n\n### 3.2 Linear Complexity Bidirectional Attention\n\nDifferent from the vanilla RWKV \\[ [35]\\], we make the following modifications to its original attention mechanism to adapt it to vision tasks:\n(1) Bidirectional attention: We extend the upper limit of original RWKV attention from t𝑡t (the current token) to T−1𝑇1T-1 (the last token) in the summation formula to ensure that all tokens are mutually visible in the calculation of each result. Thus, the original causal attention transforms into bidirectional global attention.\n(2) Relative bias: We compute the absolute value of the time difference t−i𝑡𝑖t-i and divide it by the total number of tokens (denoted as T𝑇T) to represent the relative bias of tokens in images of different sizes.\n(3) Flexible decay: We no longer restrict the learnable decay parameter w𝑤w to be positive in the exponential term allowing the exponential decay attention to focus on tokens further away from the current token in different channels.\nThe simple yet necessary modification achieves global attention calculation and maximizes the preservation of RWKV’s low complexity and adaptability to vision tasks.\n\nSimilar to the attention in RWKV, our bidirectional attention can also be equivalently expressed in a summation form (for the sake of clarity) and an RNN form (in practical implementation).\n\nSummation Form.\nThe attention calculation result for the t𝑡t-th token is given by the following formula:\n\n|     |     |     |     |\n| --- | --- | --- | --- |\n|  | w​k​vt=Bi​-​WKV​(K,V)t=∑i=0,i≠tT−1e−(\\|t−i\\|−1)/T⋅w+ki​vi+eu+kt​vt∑i=0,i≠tT−1e−(\\|t−i\\|−1)/T⋅w+ki+eu+kt.𝑤𝑘subscript𝑣𝑡Bi-WKVsubscript𝐾𝑉𝑡subscriptsuperscript𝑇1formulae-sequence𝑖0𝑖𝑡superscript𝑒⋅𝑡𝑖1𝑇𝑤subscript𝑘𝑖subscript𝑣𝑖superscript𝑒𝑢subscript𝑘𝑡subscript𝑣𝑡subscriptsuperscript𝑇1formulae-sequence𝑖0𝑖𝑡superscript𝑒⋅𝑡𝑖1𝑇𝑤subscript𝑘𝑖superscript𝑒𝑢subscript𝑘𝑡\\\\displaystyle wkv\\_{t}=\\\\mathrm{Bi\\\\mbox{-}WKV}(K,V)\\_{t}=\\\\frac{\\\\sum^{T-1}\\_{i=0,i\\\\neq t}e^{-(\\|t-i\\|-1)/T\\\\cdot w+k\\_{i}}v\\_{i}+e^{u+k\\_{t}}v\\_{t}}{\\\\sum^{T-1}\\_{i=0,i\\\\neq t}e^{-(\\|t-i\\|-1)/T\\\\cdot w+k\\_{i}}+e^{u+k\\_{t}}}. |  | (5) |\n\nHere, T𝑇T represents the total number of tokens, equal to H​W/p2𝐻𝑊superscript𝑝2HW/p^{2}, w𝑤w and u𝑢u are two C𝐶C-dimensional learnable vectors that represent channel-wise spatial decay and the bonus indicating the current token, respectively. ktsubscript𝑘𝑡k\\_{t} and vtsubscript𝑣𝑡v\\_{t} denotes t𝑡t-th feature of K𝐾K and V𝑉V.\n\nThe summation formula indicates that the output w​k​vt𝑤𝑘subscript𝑣𝑡wkv\\_{t} is a weighted sum of V𝑉V along the token dimension from 00 to T−1𝑇1T-1, resulting in a C𝐶C-dimensional vector. It represents the result obtained by applying the attention operation to the t-th token. The weight is determined by the spatial decay vector w𝑤w, the relative bias between tokens (\\|t−i\\|−1)/T𝑡𝑖1𝑇(\\|t-i\\|-1)/T, and kisubscript𝑘𝑖k\\_{i} collectively.\n\nRNN Form.\nIn the practical implementation, the above [Eq.5]In 3.2 Linear Complexity Bidirectional Attention ‣ 3 Vision-RWKV ‣ Vision-RWKV: Efficient and Scalable Visual Perception with RWKV-Like Architectures\") can be transformed into a recursive formula in the form of RNN that the result of each token can be obtained through a fixed number of FLOPs.\nBy splitting the summation term of the denominator and numerator in [Eq.5]In 3.2 Linear Complexity Bidirectional Attention ‣ 3 Vision-RWKV ‣ Vision-RWKV: Efficient and Scalable Visual Perception with RWKV-Like Architectures\") with t𝑡t as the boundary, we can obtain 4 hidden states:\n\n|     |     |     |     |     |     |     |\n| --- | --- | --- | --- | --- | --- | --- |\n|  | at−1=subscript𝑎𝑡1absent\\\\displaystyle a\\_{t-1}= | ∑i=0t−1e−(\\|t−i\\|−1)/T⋅w+ki​vi,subscriptsuperscript𝑡1𝑖0superscript𝑒⋅𝑡𝑖1𝑇𝑤subscript𝑘𝑖subscript𝑣𝑖\\\\displaystyle\\\\sum^{t-1}\\_{i=0}e^{-(\\|t-i\\|-1)/T\\\\cdot w+k\\_{i}}v\\_{i}, | bt−1=subscript𝑏𝑡1absent\\\\displaystyle b\\_{t-1}= | ∑i=t+1T−1e−(\\|t−i\\|−1)/T⋅w+ki​vi,subscriptsuperscript𝑇1𝑖𝑡1superscript𝑒⋅𝑡𝑖1𝑇𝑤subscript𝑘𝑖subscript𝑣𝑖\\\\displaystyle\\\\sum^{T-1}\\_{i=t+1}e^{-(\\|t-i\\|-1)/T\\\\cdot w+k\\_{i}}v\\_{i}, |  | (6) |\n|  | ct−1=subscript𝑐𝑡1absent\\\\displaystyle c\\_{t-1}= | ∑i=0t−1e−(\\|t−i\\|−1)/T⋅w+ki,subscriptsuperscript𝑡1𝑖0superscript𝑒⋅𝑡𝑖1𝑇𝑤subscript𝑘𝑖\\\\displaystyle\\\\sum^{t-1}\\_{i=0}e^{-(\\|t-i\\|-1)/T\\\\cdot w+k\\_{i}}, | dt−1=subscript𝑑𝑡1absent\\\\displaystyle d\\_{t-1}= | ∑i=t+1T−1e−(\\|t−i\\|−1)/T⋅w+ki,subscriptsuperscript𝑇1𝑖𝑡1superscript𝑒⋅𝑡𝑖1𝑇𝑤subscript𝑘𝑖\\\\displaystyle\\\\sum^{T-1}\\_{i=t+1}e^{-(\\|t-i\\|-1)/T\\\\cdot w+k\\_{i}}, |  |\n\nthat can be recursively computed. The update of hidden states only requires adding or subtracting one summation term and multiplying or dividing e−w/Tsuperscript𝑒𝑤𝑇e^{-w/T}.\nThen the t𝑡t-th result can be given as:\n\n|     |     |     |     |     |\n| --- | --- | --- | --- | --- |\n|  | w​k​vt𝑤𝑘subscript𝑣𝑡\\\\displaystyle wkv\\_{t} | =at−1+bt−1+ekt+u​vtct−1+dt−1+ekt+u.absentsubscript𝑎𝑡1subscript𝑏𝑡1superscript𝑒subscript𝑘𝑡𝑢subscript𝑣𝑡subscript𝑐𝑡1subscript𝑑𝑡1superscript𝑒subscript𝑘𝑡𝑢\\\\displaystyle=\\\\frac{a\\_{t-1}+b\\_{t-1}+e^{k\\_{t}+u}v\\_{t}}{c\\_{t-1}+d\\_{t-1}+e^{k\\_{t}+u}}. |  | (7) |\n\nEach update step yields an attention result ( _i.e_., w​k​vt𝑤𝑘subscript𝑣𝑡wkv\\_{t}) for a token, so the entire w​k​v𝑤𝑘𝑣wkv matrix requires T𝑇T steps.\n\nWhen the input K𝐾K and V𝑉V are matrices with the shape of T×C𝑇𝐶T\\\\times C, the computational cost of calculating the w​k​v𝑤𝑘𝑣wkv matrix is given by:\n\n|     |     |     |     |\n| --- | --- | --- | --- |\n|  | FLOPs​(Bi-WKV​(K,V))=13×T×C.FLOPsBi-WKV𝐾𝑉13𝑇𝐶\\\\text{FLOPs}(\\\\text{Bi\\\\mbox{-}WKV}(K,V))=13\\\\times T\\\\times C.\\\\vspace{-0.5em} |  | (8) |\n\nHere, the number 13 is approximately from the updates of (a,b,c,d)𝑎𝑏𝑐𝑑(a,b,c,d), the computation of the exponential, and the calculation of w​k​vt𝑤𝑘subscript𝑣𝑡wkv\\_{t}. T𝑇T is the total number of update steps and is equal to the number of image tokens.\nThe above approximation shows that the complexity of the forward process is O​(T​C)𝑂𝑇𝐶O(TC). The backward propagation of the operator can still be represented as a more complex RNN form, with a computational complexity of O​(T​C)𝑂𝑇𝐶O(TC). The specific formula for backward propagation is provided in the Appendix.\n\n### 3.3 Quad-Directional Token Shift\n\nBy introducing an exponential decay mechanism, the complexity of global attention can be reduced from quadratic to linear, greatly enhancing the computational efficiency of the model in high-resolution images. However, the one-dimensional decay does not align with the neighboring relationships in two-dimensional images. Therefore, we introduce a quad-directional token shift (Q-Shift) in the first step of each spatial-mix and channel-mix module. The Q-Shift operation allows all tokens shifted and linearly interpolated with their neighboring tokens as follows:\n\n|     |     |     |     |     |\n| --- | --- | --- | --- | --- |\n|  | Q​-​Shift(∗)​(X)Q-subscriptShift𝑋\\\\displaystyle{\\\\rm Q\\\\mbox{-}Shift}\\_{(\\*)}(X) | =X+(1−μ(\\*))​X†,absent𝑋1subscript𝜇(\\*)superscript𝑋†\\\\displaystyle=X+(1-\\\\mu\\_{\\\\text{(\\*)}})X^{\\\\dagger}, |  | (9) |\n|  | where​X†​\\[h,w\\]wheresuperscript𝑋†ℎ𝑤\\\\displaystyle\\\\text{where}\\ X^{{\\\\dagger}}\\[h,w\\] | =Concat(X\\[h−1,w,0:C/4\\],X\\[h+1,w,C/4:C/2\\],\\\\displaystyle=\\\\mathrm{Concat}(X\\[h-1,w,0:C/4\\],X\\[h+1,w,C/4:C/2\\], |  |\n|  |  | X\\[h,w−1,C/2:3C/4\\],X\\[h,w+1,3C/4:C\\]).\\\\displaystyle\\ \\ \\ \\ \\ \\ \\ \\ \\ \\ \\ \\ \\ \\ X\\[h,w-1,C/2:3C/4\\],X\\[h,w+1,3C/4:C\\]). |  |\n\nSubscript (∗)∈{R,K,V}𝑅𝐾𝑉(\\*)\\\\in\\\\{R,K,V\\\\} denotes 3 interpolation of X𝑋X and X†superscript𝑋†X^{\\\\dagger} controlled by the learnable vectors μ(∗)subscript𝜇\\\\mu\\_{(\\*)} for the later calculation of R,K,V𝑅𝐾𝑉R,K,V, respectively. hℎh and w𝑤w denote the row and column index of token X𝑋X, “:” is a slicing operation excluded the end index. The Q-Shift makes the attention mechanism of different channels obtain the prior of focusing on neighboring tokens internally without introducing many additional FLOPs.\nThe Q-Shift operation also increases the receptive field of each token which greatly enhances the coverage of the token in the posterior layers.\n\n### 3.4 Scale Up Stability\n\nBoth the number of model layers increasing and the accumulation in the exponent term during the recursion can lead to instability in the model output and affect the stability of the training process.\nTo mitigate the instability, we employ two simple but effective modifications to stabilize the scale-up of the model.\n(1) Bounded exponential:\nAs the input resolution increases, both exponential decay and growth quickly exceed the range of floating-point numbers. Therefore, we divide the exponential term by the number of tokens (such as exp(−(\\|t−i\\|−1)/T⋅w\\\\mathrm{exp}(-(\\|t-i\\|-1)/T\\\\cdot w)), making the maximum decay and growth bounded.\n(2) Extra layer normalization:\nWhen the model gets deeper, we directly add layer normalization \\[ [2]\\] after the attention mechanism and Squared ReLU operation to prevent the model’s output from overflowing.\nThe two modifications enable stable scaling of both input resolution and model depth, allowing large models to train and converge stably. We also introduce layer scale \\[ [50]\\] which contributes to the stability of the models as they scale up.\n\n| Model | Emb Dim | Hidden Dim | Depth | Extra Norm | #Param |\n| --- | --- | --- | --- | --- | --- |\n| VRWKV-T | 192 | 768 | 12 | ✕ | 6.2M |\n| VRWKV-S | 384 | 1536 | 12 | ✕ | 23.8M |\n| VRWKV-B | 768 | 3072 | 12 | ✕ | 93.7M |\n| VRWKV-L | 1024 | 4096 | 24 | ✓ | 334.9M |\n\nTable 1: Default settings for Vision-RWKV of different scales.\nWe report the embedding dimension, hidden dimension, and model depth for VRWKV-T/S/B/L.\n“Extra Norm” means additional layer normalization layers are used to stabilize the model’s outputs.\n“#Param” denotes the number of parameters.\n\n### 3.5 Model Details\n\nFollowing ViT, the hyper-parameters for variants of VRWKV, including embedding dimension, hidden dimension in linear projection, and depth, are specified in [Tab.1]In 3.4 Scale Up Stability ‣ 3 Vision-RWKV ‣ Vision-RWKV: Efficient and Scalable Visual Perception with RWKV-Like Architectures\").\nDue to the increased depth of the VRWKV-L model, additional layer normalizations as discussed in [Sec.3.4]Scale Up Stability ‣ 3 Vision-RWKV ‣ Vision-RWKV: Efficient and Scalable Visual Perception with RWKV-Like Architectures\"), are incorporated at appropriate positions to ensure output stability.",
+      "citations": [
+        {
+          "start_pos": 234,
+          "end_pos": 238,
+          "text": "[35]",
+          "paper_id": "bib.bib35",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 3652,
+          "end_pos": 3655,
+          "text": "[2]",
+          "paper_id": "bib.bib2",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 4952,
+          "end_pos": 4956,
+          "text": "[20]",
+          "paper_id": "bib.bib20",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 5172,
+          "end_pos": 5176,
+          "text": "[35]",
+          "paper_id": "bib.bib35",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 13820,
+          "end_pos": 13823,
+          "text": "[2]",
+          "paper_id": "bib.bib2",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 14102,
+          "end_pos": 14106,
+          "text": "[50]",
+          "paper_id": "bib.bib50",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        }
+      ]
+    },
+    "4 Experiments": {
+      "content": "We comprehensively evaluate the substitutability of our VRWKV method for ViT in performance, scalability, flexibility, and efficiency.\nWe validate the effectiveness of our model on the widely-used image classification dataset ImageNet \\[ [8]\\]. For downstream dense prediction tasks, we select detection tasks on the COCO \\[ [27]\\] dataset and semantic segmentation on the ADE20K \\[ [62]\\] dataset.\n\n|     |     |     |     |     |     |\n| --- | --- | --- | --- | --- | --- |\n|  | Method | Size | #Param | FLOPs | Top-1 Acc |\n| hierarchical | ResNet-18 \\[ [20]\\] | 2242superscript2242224^{2} | 11.7M | 1.8G | 69.9 |\n| PVT-T \\[ [56]\\] | 2242superscript2242224^{2} | 13.2M | 1.9G | 75.1 |\n| ResNet-50 \\[ [20]\\] | 2242superscript2242224^{2} | 25.6M | 4.1G | 76.6 |\n| Swin-T \\[ [30]\\] | 2242superscript2242224^{2} | 28.3M | 4.4G | 81.2 |\n| PVT-M \\[ [56]\\] | 2242superscript2242224^{2} | 44.2M | 6.7G | 81.2 |\n| ResNet-101 \\[ [20]\\] | 2242superscript2242224^{2} | 44.6M | 7.9G | 78.0 |\n| Swin-S \\[ [30]\\] | 2242superscript2242224^{2} | 49.6M | 8.7G | 83.0 |\n| PVT-L \\[ [56]\\] | 2242superscript2242224^{2} | 61.4M | 9.8G | 81.7 |\n| Swin-B \\[ [30]\\] | 2242superscript2242224^{2} | 87.8M | 15.1G | 83.4 |\n| DeiT-T \\[ [49]\\] | 2242superscript2242224^{2} | 5.7M | 1.3G | 72.2 |\n|  | DeiT-S \\[ [49]\\] | 2242superscript2242224^{2} | 22.1M | 4.6G | 79.9 |\n|  | XCiT-S12 \\[ [1]\\] | 2242superscript2242224^{2} | 26.0M | 4.8G | 82.0 |\n|  | DeiT-B \\[ [49]\\] | 2242superscript2242224^{2} | 86.6M | 17.6G | 81.8 |\n|  | XCiT-L24 \\[ [1]\\] | 2242superscript2242224^{2} | 189.0M | 36.1G | 82.9 |\n|  | ViT-L \\[ [12]\\] | 3842superscript3842384^{2} | 309.5M | 191.1G | 85.2 |\n|  | VRWKV-T | 2242superscript2242224^{2} | 6.2M | 1.2G | 75.1 |\n|  | VRWKV-S | 2242superscript2242224^{2} | 23.8M | 4.6G | 80.1 |\n|  | VRWKV-B | 2242superscript2242224^{2} | 93.7M | 18.2G | 82.0 |\n|  | VRWKV-L | 3842superscript3842384^{2} | 334.9M | 189.5G | 86.0 |\n| non-hierarchical | VRWKV-L⋆ | 3842superscript3842384^{2} | 334.9M | 189.5G | 86.5 |\n\nTable 2: Validation results on ImageNet-1K.\nVRWKV-T/S/B are trained from scratch using ImageNet-1K, while VRWKV-L is pre-trained on Imagenet-22K and fine-tuned on Imagenet-1K.\n“#Param” denotes the number of parameters, and “FLOPs” means the computational workload for processing an image at the resolution specified in the “Size” column.\n“⋆⋆\\\\star” denotes Bamboo-47K \\[ [61]\\] is used in the pre-training.\n\n### 4.1 Image Classification\n\nSettings.\nFor -Tiny/Small/Base models, we conduct supervised training from scratch on ImageNet-1K \\[ [8]\\]. Following the training strategy and data augmentation of DeiT \\[ [49]\\], we use a batch size of 1024, AdamW \\[ [33]\\] with a base learning rate of 5e-4, weight decay of 0.05, and cosine annealing schedule \\[ [32]\\]. Images are cropped to the resolution of 224×224224224224\\\\times 224 for training and validation. For the -Large models, we first pre-train them for 90 epochs on ImageNet-22K with a batch size of 4096 and resolution of 192×192192192192\\\\times 192, and then fine-tune them for 20 epochs on ImageNet-1K to a higher resolution of 384×384384384384\\\\times 384.\n\nResults.\nWe compare the results of our VRWKV with other hierarchical and non-hierarchical backbones on the ImageNet-1K validation dataset. As shown in [Tab.2]In 4 Experiments ‣ Vision-RWKV: Efficient and Scalable Visual Perception with RWKV-Like Architectures\"), with the same number of parameters, computational complexity, and training/testing resolutions, VRWKV achieves better results than ViT.\nFor example, when VRWKV-T has slightly lower FLOPs than DeiT-T(1.2G _vs_. 1.3G), our VRWKV-T achieves a 2.9 point higher than DeiT-T on top-1 accuracy.\nWhen the model size scales up, VRWKV still demonstrates higher baseline performance.\nIn the case of large models, VRWKV-L achieves a 0.8 point higher top-1 accuracy of 86.0% at the resolution of 384×384384384384\\\\times 384 than ViT-L, with a slightly reduced computational cost.\nThe superior performance from tiny to large-size models demonstrates that the VRWKV model possesses the scalability as ViT.\nAdditionally, after using Bamboo-47K \\[ [61]\\] in the pre-train process, the performance of VRWKV-L can be further boosted to 86.5%, indicating that our VRWKV also possesses the ability like ViT to benefit from pre-training on large-scale datasets.\nThe exploration of VRWKV in classification tasks demonstrates its potential to be a viable alternative to traditional ViT models.\n\n### 4.2 Object Detection\n\n| Method | #Param | FLOPs | APbsuperscriptAPb\\\\rm AP^{b} | APmsuperscriptAPm\\\\rm AP^{m} |\n| --- | --- | --- | --- | --- |\n| ViT-T†\\[ [49]\\] | 8.0M | 95.4G | 41.1 | 37.5 |\n| ViT-T \\[ [49]\\] | 8.0M | 147.1G | 41.6 | 37.9 |\n| VRWKV-T (ours) | 8.4M | 67.9G | 41.7 | 38.0 |\n| ViT-S†\\[ [49]\\] | 27.5M | 241.2G | 44.6 | 39.7 |\n| ViT-S \\[ [49]\\] | 27.5M | 344.5G | 44.9 | 40.1 |\n| VRWKV-S (ours) | 29.3M | 189.9G | 44.8 | 40.2 |\n| ViT-B†\\[ [49]\\] | 99.5M | 686.7G | 46.2 | 41.5 |\n| ViT-B \\[ [49]\\] | 99.5M | 893.3G | 46.8 | 41.8 |\n| VRWKV-B (ours) | 106.6M | 599.0G | 46.8 | 41.7 |\n| ViT-L†\\[ [44]\\] | 327.0M | 1799.3G | 48.7 | 43.3 |\n| VRWKV-L (ours) | 351.9M | 1730.6G | 50.6 | 44.9 |\n\nTable 3: Object detection and instance segmentation on COCO val2017.\nAll models adopt the ViT-Adapter \\[ [4]\\] to generate multi-scale features for detection heads.\n -T/S/B models are initialized with ImageNet-1K pre-trained weights, and all -L models with ImageNet-22K weights.\n“#Param” denotes the number of backbone parameters. “FLOPs” denotes the computational workload of the backbone with an input image of 1333×80013338001333\\\\times 800.\n“††\\\\dagger” means window attention is adopted in ViT layers.\n\nSettings.\nIn the detection tasks, we adopt Mask R-CNN \\[ [19]\\] as the detection head. For the -Tiny/Small/Base models, the backbones use weights pre-trained on ImageNet-1K for 300 epochs. For the -Large model, weights pre-trained on ImageNet-22K are used. All models use a 1×\\\\times training schedule ( _i.e_., 12 epochs) with a batch size of 16, and AdamW \\[ [33]\\] optimizer with an initial learning rate of 1e-4 and weight decay of 0.05.\n\nResults.\nIn [Tab.3]In 4.2 Object Detection ‣ 4 Experiments ‣ Vision-RWKV: Efficient and Scalable Visual Perception with RWKV-Like Architectures\"), we report the detection results on the COCO val \\[ [27]\\] dataset using VRWKV and ViT as backbones. As the results showed in [Fig.1]In 1 Introduction ‣ Vision-RWKV: Efficient and Scalable Visual Perception with RWKV-Like Architectures\") (a) and [Tab.3]In 4.2 Object Detection ‣ 4 Experiments ‣ Vision-RWKV: Efficient and Scalable Visual Perception with RWKV-Like Architectures\"), due to the use of window attention in dense prediction tasks, VRWKV with global attention can achieve better performance than ViT with lower FLOPs. For example, VRWKV-T has approximately 30% lower backbone FLOPs compared to ViT-T†, with an improvement of APbsuperscriptAPb\\\\mathrm{AP^{b}} by 0.6 points. Similarly, VRWKV-L achieves a 1.9-point increase in APbsuperscriptAPb\\\\mathrm{AP^{b}} with lower FLOPs compared to ViT-L†.\nAdditionally, we compare the performance of VRWKV and ViT using global attention. For instance, VRWKV-S achieves similar performance to ViT-S with 45% lower FLOPs. This demonstrates the effectiveness of VRWKV’s global attention mechanism in dense prediction tasks and the advantage of lower computational complexity compared to the original attention mechanism.\n\n### 4.3 Semantic Segmentation\n\n| Method | #Param | FLOPs | mIoU |\n| --- | --- | --- | --- |\n| ViT-T \\[ [49]\\] | 8.0M | 20.9G | 42.6 |\n| VRWKV-T (ours) | 8.4M | 16.6G | 43.3 |\n| ViT-S \\[ [49]\\] | 27.5M | 54.0G | 46.2 |\n| VRWKV-S (ours) | 29.3M | 46.3G | 47.2 |\n| ViT-B \\[ [49]\\] | 99.5M | 157.9G | 48.8 |\n| VRWKV-B (ours) | 106.6M | 146.0G | 49.2 |\n| ViT-L \\[ [44]\\] | 327.0M | 446.8G | 53.4 |\n| VRWKV-L (ours) | 351.9M | 421.9G | 53.5 |\n\nTable 4: Semantic segmentation on the ADE20K val set.\nAll models used ViT-Adapter \\[ [4]\\] for multi-scale feature generation and are trained with UperNet \\[ [59]\\] as the segmentation heads. For consistency in comparison, all -T/S/B models are initialized using ImageNet-1K pre-training, whereas -L models utilize ImageNet-22K pre-training.\n“#Param” refers to the number of parameters of the backbone. We report the FLOPs of backbones with the input size of 512×512512512512\\\\times 512.\n\nSettings.\nIn the semantic segmentation task, we use UperNet \\[ [59]\\] as the segmentation head. Specifically, all ViT models use global attention in the segmentation task.\nFor the -Tiny/Small/Base models, the backbones use weights pre-trained on ImageNet-1K. And for the -Large model, weights pre-trained on ImageNet-22K are used. We employ the AdamW optimizer with an initial learning rate of 6e-5 for the -Small/Base/Large models and 12e-5 for the -Tiny model, a batch size of 16, and a weight decay of 0.01.\nAll models are trained for 160k iterations on the training set of the ADE20K dataset \\[ [62]\\].\n\nResults.\nAs shown in [Tab.4]In 4.3 Semantic Segmentation ‣ 4 Experiments ‣ Vision-RWKV: Efficient and Scalable Visual Perception with RWKV-Like Architectures\"), when using UperNet for semantic segmentation, models based on VRWKV consistently outperform those based on ViT with global attention, while also being more efficient.\nFor example, VRWKV-S achieves 1 point higher than ViT-S with a 14% FLOPs decrease. VRWKV-L creates a result of 53.5 mIoU similar to ViT-L while the computation of the backbone has a 25G FLOPs lower.\nThese results demonstrate that our VRWKV backbones can extract better features for semantic segmentation compared to ViT backbones while also being more efficient, benefiting from the linear complexity attention mechanism.\n\n### 4.4 Ablation Study\n\nSettings.\nWe conduct ablation studies of the tiny-size VRWKV on ImageNet-1K \\[ [8]\\] to validate the effectiveness of various key components like Q-Shift and bidirectional attention. The experimental settings are consistent with [Sec.4.1]Image Classification ‣ 4 Experiments ‣ Vision-RWKV: Efficient and Scalable Visual Perception with RWKV-Like Architectures\").\n\nToken Shift.\nWe compare the performance of not using token shift, using the original shift method in RWKV \\[ [35]\\], and our Q-Shift.\nAs shown in [Tab.5]In 4.4 Ablation Study ‣ 4 Experiments ‣ Vision-RWKV: Efficient and Scalable Visual Perception with RWKV-Like Architectures\"), the variation in the shift method shows performance differences. Variant 1 without token shift leads to a poor performance of 71.5, which is 3.6 points lower than our model. Even with the use of our global attention, the model using the original token shift still has a 0.7-point gap with our model.\n\nBidirectional Attention.\nThe bidirectional attention mechanism enables the model to achieve global attention while the original RWKV attention has a causal mask internally. The result of Variant 3 shows that the global attention mechanism brings a 2.3 points increase in the top-1 accuracy.\n\n| Method | Token Shift | Bidirectional | Top-1 Acc |\n| Attention |\n| RWKV \\[ [35]\\] | original | ✕ | 71.1 (-4.0) |\n| Variant 1 | none | ✓ | 71.5 (-3.6) |\n| Variant 2 | original | ✓ | 74.4 (-0.7) |\n| Variant 3 | Q-Shift | ✕ | 72.8 (-2.3) |\n| VRWKV-T (ours) | Q-Shift | ✓ | 75.1 |\n\nTable 5: Ablation on key components of the proposed VRWKV.\nAll models are trained from scratch on ImageNet-1K. The “original” means the original token shift in RWKV \\[ [35]\\] which mixes the token in a single direction is used.\n\nEffective Receptive Field (ERF).\nWe analyze the impact of different designs on the ERF of models based on \\[ [11]\\] and visualize it in [Fig.3]In 4.4 Ablation Study ‣ 4 Experiments ‣ Vision-RWKV: Efficient and Scalable Visual Perception with RWKV-Like Architectures\")(a). We visualize the ERF of the central pixel with an input size of 1024 × 1024. In  [Fig.3]In 4.4 Ablation Study ‣ 4 Experiments ‣ Vision-RWKV: Efficient and Scalable Visual Perception with RWKV-Like Architectures\")(a), “No Shift” represents the absence of the token shift method (Q-Shift), and “RWKV Attn” indicates using the original RWKV attention mechanism without our modifications for vision tasks.\nFrom the comparison in the figure, all models except the “RWKV Attn” one achieved global attention while the global capacity of the VRWKV-T model is better than that of ViT-T. Despite the assistance of Q-Shift, the central pixel in “RWKV Attn” still cannot attend to the pixels on the bottom of the image due to the large input resolution. The results of “No Shift” and Q-Shift show that the Q-Shift method expands the core range of the receptive field, enhancing the inductive bias of global attention.\n\nEfficiency Analysis.\nWe gradually increase the input resolution from 224×224224224224\\\\times 224 to 2048×2048204820482048\\\\times 2048 and compare the inference and memory efficiency of VRWKV-T and ViT-T. The results were tested on an Nvidia A100 GPU, as shown in [Fig.1]In 1 Introduction ‣ Vision-RWKV: Efficient and Scalable Visual Perception with RWKV-Like Architectures\"). From the curves presented in [Fig.1]In 1 Introduction ‣ Vision-RWKV: Efficient and Scalable Visual Perception with RWKV-Like Architectures\")(b), it is observed that at lower resolutions, such as 224×224224224224\\\\times 224 with around 200 image tokens, VRWKV-T and ViT-T exhibit comparable memory usage, though VRWKV-T has a slightly lower FPS compared to ViT-T.\nHowever, with increasing resolution, VRWKV-T’s FPS rapidly exceeds that of ViT-T, thanks to its linear attention mechanism. Additionally, VRWKV-T’s RNN-like computational framework ensures a slow increase in memory usage. By the time the resolution hits 2048×2048204820482048\\\\times 2048 (equivalent to 16384 tokens), VRWKV-T’s inference speed is 10 times faster than ViT-T, and its memory consumption is reduced by 80% compared to ViT-T.\n\nWe also compare the speed of our Bi​-​WKVBi-WKV{\\\\rm Bi\\\\mbox{-}WKV} and flash attention \\[ [7]\\], reported in [Fig.3]In 4.4 Ablation Study ‣ 4 Experiments ‣ Vision-RWKV: Efficient and Scalable Visual Perception with RWKV-Like Architectures\")(b). Flash attention is highly efficient at low resolutions yet plagued by quadratic complexity, its speed decreases rapidly as the resolution increases. In high-resolution scenarios, our linear operator Bi​-​WKVBi-WKV{\\\\rm Bi\\\\mbox{-}WKV} demonstrates a significant speed advantage. For instance, when the input is 2048×2048204820482048\\\\times 2048 ( _i.e_., 16384 tokens) with the channel and head number settings according to ViT-B and VRWKV-B, our Bi​-​WKVBi-WKV{\\\\rm Bi\\\\mbox{-}WKV} operator is 2.8×2.8\\\\times faster than flash attention in inference runtime and 2.7×2.7\\\\times faster in the combined forward and backward pass.\n\nMAE Pre-training.\nSimilar to ViT, our VRWKV model can handle sparse inputs and benefits from the MAE pre-training \\[ [19]\\]. By simply modifying the Q-Shift to perform a bidirectional shift operation, VRWKV can be pre-trained using MAE. The pre-trained weights can be directly fine-tuned for other tasks using a Q-Shift manner. Following the same MAE pre-training setting as ViT, and subsequent classification training similar to [Sec.4.1]Image Classification ‣ 4 Experiments ‣ Vision-RWKV: Efficient and Scalable Visual Perception with RWKV-Like Architectures\"), our VRWKV-L achieves a top-1 accuracy improvement from 86.0% to 86.2% on ImageNet-1K val, showing the ability to acquire visual prior from masked image modeling.\n\n![Refer to caption]Figure 3: Comparison of effective receptive field (ERF) and attention runtime. (a) ERF for ViT and VRWKV in different settings. “No Shift” means no shift is used in spatial-mix and channel-mix modules. “RWKV Attn” means the original RWKV attention \\[ [35]\\] without our modifications. Our VRWKV with Q-Shift and Bi-WKV has a more comprehensive ERF than other counterparts. (b) Attention runtime of inference (left) and forward ++ backward (right) tested on an Nvidia A100 GPU.",
+      "citations": [
+        {
+          "start_pos": 238,
+          "end_pos": 241,
+          "text": "[8]",
+          "paper_id": "bib.bib8",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 325,
+          "end_pos": 329,
+          "text": "[27]",
+          "paper_id": "bib.bib27",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 383,
+          "end_pos": 387,
+          "text": "[62]",
+          "paper_id": "bib.bib62",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 556,
+          "end_pos": 560,
+          "text": "[20]",
+          "paper_id": "bib.bib20",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 627,
+          "end_pos": 631,
+          "text": "[56]",
+          "paper_id": "bib.bib56",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 702,
+          "end_pos": 706,
+          "text": "[20]",
+          "paper_id": "bib.bib20",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 774,
+          "end_pos": 778,
+          "text": "[30]",
+          "paper_id": "bib.bib30",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 845,
+          "end_pos": 849,
+          "text": "[56]",
+          "paper_id": "bib.bib56",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 921,
+          "end_pos": 925,
+          "text": "[20]",
+          "paper_id": "bib.bib20",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 993,
+          "end_pos": 997,
+          "text": "[30]",
+          "paper_id": "bib.bib30",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1064,
+          "end_pos": 1068,
+          "text": "[56]",
+          "paper_id": "bib.bib56",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1136,
+          "end_pos": 1140,
+          "text": "[30]",
+          "paper_id": "bib.bib30",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1209,
+          "end_pos": 1213,
+          "text": "[49]",
+          "paper_id": "bib.bib49",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1283,
+          "end_pos": 1287,
+          "text": "[49]",
+          "paper_id": "bib.bib49",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1360,
+          "end_pos": 1363,
+          "text": "[1]",
+          "paper_id": "bib.bib1",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1434,
+          "end_pos": 1438,
+          "text": "[49]",
+          "paper_id": "bib.bib49",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1512,
+          "end_pos": 1515,
+          "text": "[1]",
+          "paper_id": "bib.bib1",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1587,
+          "end_pos": 1591,
+          "text": "[12]",
+          "paper_id": "bib.bib12",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 2375,
+          "end_pos": 2379,
+          "text": "[61]",
+          "paper_id": "bib.bib61",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 2543,
+          "end_pos": 2546,
+          "text": "[8]",
+          "paper_id": "bib.bib8",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 2615,
+          "end_pos": 2619,
+          "text": "[49]",
+          "paper_id": "bib.bib49",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 2661,
+          "end_pos": 2665,
+          "text": "[33]",
+          "paper_id": "bib.bib33",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 2758,
+          "end_pos": 2762,
+          "text": "[32]",
+          "paper_id": "bib.bib32",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 4116,
+          "end_pos": 4120,
+          "text": "[61]",
+          "paper_id": "bib.bib61",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 4615,
+          "end_pos": 4619,
+          "text": "[49]",
+          "paper_id": "bib.bib49",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 4664,
+          "end_pos": 4668,
+          "text": "[49]",
+          "paper_id": "bib.bib49",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 4762,
+          "end_pos": 4766,
+          "text": "[49]",
+          "paper_id": "bib.bib49",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 4813,
+          "end_pos": 4817,
+          "text": "[49]",
+          "paper_id": "bib.bib49",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 4914,
+          "end_pos": 4918,
+          "text": "[49]",
+          "paper_id": "bib.bib49",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 4965,
+          "end_pos": 4969,
+          "text": "[49]",
+          "paper_id": "bib.bib49",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 5067,
+          "end_pos": 5071,
+          "text": "[44]",
+          "paper_id": "bib.bib44",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 5267,
+          "end_pos": 5270,
+          "text": "[4]",
+          "paper_id": "bib.bib4",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 5727,
+          "end_pos": 5731,
+          "text": "[19]",
+          "paper_id": "bib.bib19",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 6031,
+          "end_pos": 6035,
+          "text": "[33]",
+          "paper_id": "bib.bib33",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 6311,
+          "end_pos": 6315,
+          "text": "[27]",
+          "paper_id": "bib.bib27",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 7533,
+          "end_pos": 7537,
+          "text": "[49]",
+          "paper_id": "bib.bib49",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 7616,
+          "end_pos": 7620,
+          "text": "[49]",
+          "paper_id": "bib.bib49",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 7701,
+          "end_pos": 7705,
+          "text": "[49]",
+          "paper_id": "bib.bib49",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 7789,
+          "end_pos": 7793,
+          "text": "[44]",
+          "paper_id": "bib.bib44",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 7953,
+          "end_pos": 7956,
+          "text": "[4]",
+          "paper_id": "bib.bib4",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 8026,
+          "end_pos": 8030,
+          "text": "[59]",
+          "paper_id": "bib.bib59",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 8420,
+          "end_pos": 8424,
+          "text": "[59]",
+          "paper_id": "bib.bib59",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 8956,
+          "end_pos": 8960,
+          "text": "[62]",
+          "paper_id": "bib.bib62",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 9819,
+          "end_pos": 9822,
+          "text": "[8]",
+          "paper_id": "bib.bib8",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 10213,
+          "end_pos": 10217,
+          "text": "[35]",
+          "paper_id": "bib.bib35",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 11053,
+          "end_pos": 11057,
+          "text": "[35]",
+          "paper_id": "bib.bib35",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 11424,
+          "end_pos": 11428,
+          "text": "[35]",
+          "paper_id": "bib.bib35",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 11594,
+          "end_pos": 11598,
+          "text": "[11]",
+          "paper_id": "bib.bib11",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 13935,
+          "end_pos": 13938,
+          "text": "[7]",
+          "paper_id": "bib.bib7",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 14836,
+          "end_pos": 14840,
+          "text": "[19]",
+          "paper_id": "bib.bib19",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 15716,
+          "end_pos": 15720,
+          "text": "[35]",
+          "paper_id": "bib.bib35",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        }
+      ]
+    },
+    "5 Conclusion": {
+      "content": "We propose Vision-RWKV (VRWKV), a vision encoder with a linear computational complexity attention mechanism. We demonstrate its capability to be an alternative backbone to ViT in comprehensive vision tasks including classification, dense predictions, and masked image modeling pre-training. With comparable performance and scalability, VRWKV exhibits lower computational complexity and memory consumption. Benefiting from its low complexity, VRWKV can achieve better performance in the tasks that ViT\nstruggling to afford the high computational overhead of global attention. We hope VRWKV will be an efficient and low-cost alternative to ViT, showcasing the powerful potential of linear complexity transformers in vision fields.",
+      "citations": []
+    }
+  },
+  "references": {
+    "data": {},
+    "key_map": {}
+  }
+}

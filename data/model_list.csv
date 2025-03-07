@@ -1,0 +1,34 @@
+Category,Company,Model,Size,Context Window (Input/Output)
+Close,OpenAI,gpt-4o-2024-08-06,,128k/16k
+Close,OpenAI,gpt-4o-mini-2024-07-18,,128k/16k
+Close,OpenAI,o1-2024-12-17,,200k/100k
+Close,OpenAI,o1-mini-2024-09-12,,200k/65k
+Close,OpenAI,o1-preview-2024-09-12,,128k/32k
+Close,Anthropic,Claude 3.5 Haiku,,200k
+Close,Anthropic,claude-3-5-sonnet-20241022,,200k
+Close,Google,gemini-2.0-flash-exp,,8k
+Close,X.AI,grok-2-1212,,128k
+Close,Mistral,Codestral-2501,,256k
+Close,Mistral,mistralai/Mistral-Large-Instruct-2407,,131k
+Close,Mistral,mistralai/Ministral-8B-Instruct-2410,,131k
+Close,Mistral,mistralai/Mistral-Small-Instruct-2409,,32k
+Close,Kimi,moonshot-v1-8k,,8k
+Close,Qwen,Qwen2.5-Turbo,,1M
+Open,Qwen,Qwen-2.5-Instruct,0.5B/1.5B/3B,32K/8K
+Open,Qwen,Qwen-2.5-Instruct,7B/14B/32B/72B,128K/8K
+Open,Qwen,QwQ Preview,,32K
+Open,Google,Gemma-2,2B/9B/27B,8k
+Open,MiniMax,MiniMax-20250116,,4M
+Open,Phi,phi-4,,16k
+Open,GLM,GLM-9B-Chat,,128K
+Open,GLM,ChatGLM3-6B,,32K
+Open,Skywork,Skywork-o1-Open-Llama-3.1-8B,,128k
+Open,Yi,Yi 1.5,6B/9B/34B,4k
+Open,Yi,Yi 1.5,6B/9B/34B,16k
+Open,Yi,Yi 1.5,6B/9B/34B,32k
+Open,DeepSeek,DeepSeek v3,,64K
+Open,DeepSeek,Deepseek R1,,64K
+Open,Mistral,Mistral Nemo,,131k
+Open,Mistral,Codestral Mamba,,256k
+Open,Llama,Llama 3.1,8B/70B/405B,32K
+Open,Llama,Llama 3.3,70B,128K 

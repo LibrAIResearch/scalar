@@ -1,0 +1,1054 @@
+{
+  "title": "LLaVA-NeXT-Interleave: Tackling Multi-image, Video, and 3D in Large Multimodal Models",
+  "abstract": "Visual instruction tuning has made considerable strides in enhancing the\ncapabilities of Large Multimodal Models (LMMs). However, existing open LMMs\nlargely focus on single-image tasks, their applications to multi-image\nscenarios remains less explored. Additionally, prior LMM research separately\ntackles different scenarios, leaving it impossible to generalize cross\nscenarios with new emerging capabilities. To this end, we introduce\nLLaVA-NeXT-Interleave, which simultaneously tackles Multi-image, Multi-frame\n(video), Multi-view (3D), and Multi-patch (single-image) scenarios in LMMs. To\nenable these capabilities, we regard the interleaved data format as a general\ntemplate and compile the M4-Instruct dataset with 1,177.6k samples, spanning 4\nprimary domains with 14 tasks and 41 datasets. We also curate the\nLLaVA-Interleave Bench to comprehensively evaluate the multi-image performance\nof LMMs. Through extensive experiments, LLaVA-NeXT-Interleave achieves leading\nresults in multi-image, video, and 3D benchmarks, while maintaining the\nperformance of single-image tasks. Besides, our model also exhibits several\nemerging capabilities, e.g., transferring tasks across different settings and\nmodalities. Code is available at https://github.com/LLaVA-VL/LLaVA-NeXT",
+  "paper_id": "http://arxiv.org/abs/2407.07895v2",
+  "markdown_content": "# LLaVA-NeXT-Interleave: Tackling Multi-image, Video, and 3D   in Large Multimodal Models\n\nFeng Li1,2∗,   Renrui Zhang1,3∗,   Hao Zhang1,2∗,   Yuanhan Zhang1,4,   Bo Li1,4,   Wei Li1,   Zejun Ma1,   Chunyuan Li11 ByteDance\n2 HKUST\n3 CUHK\n4 NTU\n∗ Core contributor\n\n[https://llava-vl.github.io/blog/2024-06-16-llava-next-interleave/](https://llava-vl.github.io/blog/2024-06-16-llava-next-interleave/ \"\")\n\n###### Abstract\n\nVisual instruction tuning has made considerable strides in enhancing the capabilities of Large Multimodal Models (LMMs). However, existing open LMMs largely focus on single-image tasks, their applications to multi-image scenarios remains less explored. Additionally, prior LMM research separately tackles different scenarios, leaving it impossible to generalize cross scenarios with new emerging capabilities. To this end, we introduce LLaVA-NeXT-Interleave, which simultaneously tackles Multi-image, Multi-frame (video), Multi-view (3D), and Multi-patch (single-image) scenarios in LMMs. To enable these capabilities, we regard the interleaved data format as a general template and compile the M4-Instruct dataset with 1,177.6k samples, spanning 4 primary domains with 14 tasks and 41 datasets. We also curate the LLaVA-Interleave Bench to comprehensively evaluate the multi-image performance of LMMs. Through extensive experiments, LLaVA-NeXT-Interleave achieves leading results in multi-image, video, and 3D benchmarks, while maintaining the performance of single-image tasks. Besides, our model also exhibits several emerging capabilities, e.g., transferring tasks across different settings and modalities. Code is available at [https://github.com/LLaVA-VL/LLaVA-NeXT](https://github.com/LLaVA-VL/LLaVA-NeXT \"\").\n\n![[Uncaptioned image]](https://ar5iv.org/html/2407.07895/assets/res/images/bar.png)\n\nPerformance comparison in three interleaved scenarios, including multi-image, multi-frame (video), and multi-view (3D). Our LLaVA-NeXT-Interleave model achieves SoTA performance across a variety of evaluation benchmarks.\n\n## 1 Introduction\n\nRecent advancements in Large Multimodal Models (LMMs) \\[ [37](https://ar5iv.org/html/2407.07895#bib.bib37 \"\"), [26](https://ar5iv.org/html/2407.07895#bib.bib26 \"\"), [43](https://ar5iv.org/html/2407.07895#bib.bib43 \"\"), [12](https://ar5iv.org/html/2407.07895#bib.bib12 \"\"), [64](https://ar5iv.org/html/2407.07895#bib.bib64 \"\"), [11](https://ar5iv.org/html/2407.07895#bib.bib11 \"\"), [66](https://ar5iv.org/html/2407.07895#bib.bib66 \"\")\\]\nhave showcased impressive capabilities in diverse multimodal contexts, advancing the pursuit of artificial general intelligence. With extensive vision-language data \\[ [46](https://ar5iv.org/html/2407.07895#bib.bib46 \"\"), [47](https://ar5iv.org/html/2407.07895#bib.bib47 \"\")\\], they empower Large Language Models (LLMs) \\[ [52](https://ar5iv.org/html/2407.07895#bib.bib52 \"\"), [53](https://ar5iv.org/html/2407.07895#bib.bib53 \"\"), [8](https://ar5iv.org/html/2407.07895#bib.bib8 \"\"), [5](https://ar5iv.org/html/2407.07895#bib.bib5 \"\")\\] with visual modality by aligning vision encoders \\[ [44](https://ar5iv.org/html/2407.07895#bib.bib44 \"\"), [9](https://ar5iv.org/html/2407.07895#bib.bib9 \"\"), [45](https://ar5iv.org/html/2407.07895#bib.bib45 \"\")\\]. This integration has propelled forward the field of AI, enabling complex image and language understanding tasks to be performed with unprecedented accuracy.\n\n![Refer to caption](https://ar5iv.org/html/2407.07895/assets/x1.png)Figure 1: Tasks in our M4-Instruct. (a) showcases an example of interleaved multi-image scenarios (visual story telling). (b), (c), and (d) indicate that video, 3D and single-image data can also be organized as the interleaved data format for unified processing.\n\nHowever, most open-source LMMs \\[ [24](https://ar5iv.org/html/2407.07895#bib.bib24 \"\"), [11](https://ar5iv.org/html/2407.07895#bib.bib11 \"\"), [34](https://ar5iv.org/html/2407.07895#bib.bib34 \"\"), [36](https://ar5iv.org/html/2407.07895#bib.bib36 \"\")\\] have primarily focused on pushing the performance limit of the single-image scenario, the more complex multi-image scenarios remain largely less explored. This oversight is significant given that many real-world applications demand multi-image capabilities, such as comprehensive multi-image analyses. Traditionally, researchers have approached these challenges by training separate task-specific models for each application scenario, e.g., multi-image \\[ [19](https://ar5iv.org/html/2407.07895#bib.bib19 \"\"), [27](https://ar5iv.org/html/2407.07895#bib.bib27 \"\"), [1](https://ar5iv.org/html/2407.07895#bib.bib1 \"\")\\], video \\[ [7](https://ar5iv.org/html/2407.07895#bib.bib7 \"\"), [29](https://ar5iv.org/html/2407.07895#bib.bib29 \"\"), [67](https://ar5iv.org/html/2407.07895#bib.bib67 \"\")\\], and 3D \\[ [14](https://ar5iv.org/html/2407.07895#bib.bib14 \"\"), [58](https://ar5iv.org/html/2407.07895#bib.bib58 \"\"), [15](https://ar5iv.org/html/2407.07895#bib.bib15 \"\")\\]. This is both labor-intensive and time-consuming, resulting in fragmented methodologies that are inefficient and often unscalable.\nConsidering the diverse range of computer vision settings and data formats, there is a pressing need to develop a general framework for LMMs that can operate effectively across these varied contexts.\n\nIn this paper, we observe that the image-text interleaved format can naturally serve as a general data template to unify different scenarios, e.g., single-image or multi-image as special cases, video as multi-frames, and 3D as multi-views, as illustrated in Figure [1](https://ar5iv.org/html/2407.07895#S1.F1 \"Figure 1 ‣ 1 Introduction ‣ LLaVA-NeXT-Interleave: Tackling Multi-image, Video, and 3D in Large Multimodal Models\"). Therefore, we present LLaVA-NeXT-Interleave, an all-around LMM that extends the model capabilities to various real-world settings such as Multi-image, Multi-frame (videos), Multi-view (3D) while maintains the performance of the Multi-patch (single-image) performance. We denote the four settings as M4.\n\nThe core innovation of our approach lies in the perspective to leverage an image-text interleaved format as a universal data template capable of accommodating different scenarios, and construct the related visual instruction-following data. This perspective not only simplifies the training process across various domains, but also allow the model to emerge new capabilities due to cross-domain task composition.\n\nOur contributions are summarized as below:\n\n- •\n\n\nInterleave data format unifies different tasks. We convert multi-image, video, 3D, and single-image data all into an interleaved training format, which unifies different tasks in a single LMM.\n\n- •\n\n\nNew dataset and benchmark. We compile a high-quality training dataset, M4-Instruct, with 1177.6 samples to empower LMMs with the M4 capabilities, which spans 4 primary domains (multi-image, video, 3D, and single-image) with 14 tasks and 41 datasets. We also curate LLaVA-Interleave Bench, a diverse set of benchmarks to evaluate the multi-image performance, including 7 newly collected and 13 existing in/out-domain benchmarks.\n\n- •\n\n\nSoTA performance. With a single model, LLaVA-NeXT-Interleave can achieve leading results across different multi-image tasks compared to the previous SoTA, while maintaining the single-image performance, as exemplified in Figure LLaVA-NeXT-Interleave: Tackling Multi-image, Video, and 3Din Large Multimodal Models.\n\n- •\n\n\nEmerging capabilities with cross-task transfer. By jointly training on a diverse set of tasks, our model showcases emerging capabilities to transfer tasks across different settings and modalities. e.g., from spotting differences between images to videos.\n\n\n## 2 Related Work\n\n#### Interleaved Image-text Training Data.\n\nAs a more general format, interleaved image-text data can enable LMMs with two distinctive capabilities: multimodal in-context learning (ICL) capability and instruction-following capability in real-world multi-image application scenarios.\nThe former in-context scenarios interleave several image-text examples within the prompt as task demonstrations, adapting LMMs to new tasks in the inference stage in a few-shot manner. Flamingo \\[ [1](https://ar5iv.org/html/2407.07895#bib.bib1 \"\")\\] is first model to demonstrate this capability, and thus is considered as GPT-3 moment for multimodal community. Typically, the multimodal ICL ability is emerged after pre-training on web-scale raw interleaved image-text sequences. In the open-source community, MMC4 \\[ [68](https://ar5iv.org/html/2407.07895#bib.bib68 \"\")\\] introduces a public 101.2M interleaved dataset spanning everyday topics, OBELICS \\[ [22](https://ar5iv.org/html/2407.07895#bib.bib22 \"\")\\] also presents a filtered dataset comprising 141M interleaved web pages. Kosmos-1 \\[ [18](https://ar5iv.org/html/2407.07895#bib.bib18 \"\")\\] curates a 71M multimodal corpora, including arbitrarily interleaved documents. To explicitly enable the ICL capability, MIMIC-IT \\[ [25](https://ar5iv.org/html/2407.07895#bib.bib25 \"\")\\] proposes an automatic pipeline to create 2.8M multimodal samples in the instruction-tuning stage.\nOn the other hand, the latter multi-image scenarios aim to tackle diverse real-world applications scenarios that involve multi-images.\nThe training data of VPG-C \\[ [27](https://ar5iv.org/html/2407.07895#bib.bib27 \"\")\\] collected 4 new datasets with ChatGPT.\nMantis-Instruct \\[ [19](https://ar5iv.org/html/2407.07895#bib.bib19 \"\")\\] compiles existing 11 interleaved datasets and creates 4 new datasets.\nThe proposed M4-Instruct  \\[ [19](https://ar5iv.org/html/2407.07895#bib.bib19 \"\")\\] compiles existing 41 interleaved datasets and creates 6 new datasets, covering a much higher scenarios diversity than Mantis-Instruct.\n\n#### Interleaved LMMs.\n\nAs representative closed-source LMMs, both GPT-4V \\[ [42](https://ar5iv.org/html/2407.07895#bib.bib42 \"\")\\] and Gemini \\[ [12](https://ar5iv.org/html/2407.07895#bib.bib12 \"\")\\] support real-world multi-image application scenarios with leading performance.\nWith various public datasets aforementioned, the community has developed open-source LMMs equipped with remarkable multi-image proficiency. The ICL performance is typically considered to evaluate multimodal pre-training, which has been adopted in several known LMMs, such as OpenFlamingo \\[ [2](https://ar5iv.org/html/2407.07895#bib.bib2 \"\")\\], IDEFICS series \\[ [22](https://ar5iv.org/html/2407.07895#bib.bib22 \"\"), [23](https://ar5iv.org/html/2407.07895#bib.bib23 \"\")\\], VILA \\[ [33](https://ar5iv.org/html/2407.07895#bib.bib33 \"\")\\] and MM1 \\[ [41](https://ar5iv.org/html/2407.07895#bib.bib41 \"\")\\], Emu2 \\[ [51](https://ar5iv.org/html/2407.07895#bib.bib51 \"\")\\]. Otter \\[ [25](https://ar5iv.org/html/2407.07895#bib.bib25 \"\")\\] is initialized from OpenFlamingo, and is fine-tuned on the MIMIC-IT dataset to further improve ICL ability with instruction-tuning.\nIn contrast, the use of instruction-tuning in LMMs for various real-world multi-image applications has been less explored, despite of Mantis \\[ [19](https://ar5iv.org/html/2407.07895#bib.bib19 \"\")\\].\nThe proposed LLaVA-NeXT-Interleave not only broadens the multi-image scenario itself as demonstrated by the improved experimental results, but also generalize the settings to diverse scenarios with one model, e.g., video, 3D, and single-image. The cross-scenario training leads to emerging capabilities, achieving zero-shot task composition in new multi-image contexts.\n\n![Refer to caption](https://ar5iv.org/html/2407.07895/assets/res/images/task_overview.png)Figure 2: Task examples of M4-Instruct, containing diverse scenarios in multi-image, multi-frame (video), and multi-view (3D).\n\n#### Interleaved Benchmarks.\n\nTo assess the interleaved multi-image capabilities of LMMs, there have been several high-quality benchmarks in various scenarios. The ICL benchmarks \\[ [20](https://ar5iv.org/html/2407.07895#bib.bib20 \"\"), [49](https://ar5iv.org/html/2407.07895#bib.bib49 \"\")\\] for LMMs comprehensively evaluate their interleaved skills from few-shot to many-shot settings. For the more challenging multi-image scenarios, previous works mainly focus on a specific domain for evaluation, including NLVR2 \\[ [50](https://ar5iv.org/html/2407.07895#bib.bib50 \"\")\\] for daily-life VQA, MMMU \\[ [61](https://ar5iv.org/html/2407.07895#bib.bib61 \"\")\\] for colleague-level problem-solving, MathVerse-mv \\[ [65](https://ar5iv.org/html/2407.07895#bib.bib65 \"\")\\] and SciVerse-mv \\[ [13](https://ar5iv.org/html/2407.07895#bib.bib13 \"\")\\] for mathematical and scientific reasoning, BLINK \\[ [10](https://ar5iv.org/html/2407.07895#bib.bib10 \"\")\\] to challenge LMMs, and Mantis-Eval \\[ [19](https://ar5iv.org/html/2407.07895#bib.bib19 \"\")\\] for multi-image understanding.\nTo further evaluate LMMs on a collection of multi-image scenarios, DEMON \\[ [27](https://ar5iv.org/html/2407.07895#bib.bib27 \"\")\\] is the first benchmark that compiles dozens of datasets with 477K samples. With the large amount of data and high diversity, DEMON lays a good foundation for multi-image research. Unfortunately, it also inherits a significant amount of low-quality data samples from existing datasets. To facilitate evaluation, the proposed LLaVA-Interleave Bench curate high-quality samples, comprising both specific (synthetic, mathematical, low-level) and general (daily, real-world, text-rich) multi-image scenarios. With 9 newly curated and 13 existing datasets, we categorize them into in-domain (12.9K) and out-domain (4.1K) schemes.\nCon-current multi-image evaluation benchmarks include MuirBench \\[ [54](https://ar5iv.org/html/2407.07895#bib.bib54 \"\")\\] and ReMI \\[ [21](https://ar5iv.org/html/2407.07895#bib.bib21 \"\")\\].\n\n## 3 Interleaved Multi-image Tasks & Data\n\n### 3.1 Task Overview\n\n![Refer to caption](https://ar5iv.org/html/2407.07895/assets/res/images/pi_data.png)\n\nFigure 3: M4-Instruct training data statistics.![Refer to caption](https://ar5iv.org/html/2407.07895/assets/res/images/pi_benchmark.png)\n\nFigure 4: LLaVA-Interleave Bench statistics.\n\nWe observe different computer vision scenarios can be generally represented by the interleaved multi-image format, such as video, 3D, and single-image data. Therefore, to endow LLaVA-Interleave with diverse capabilities, as shown in Figure [1](https://ar5iv.org/html/2407.07895#S1.F1 \"Figure 1 ‣ 1 Introduction ‣ LLaVA-NeXT-Interleave: Tackling Multi-image, Video, and 3D in Large Multimodal Models\"), we adopt the interleaved multi-image format to unify the data input of the following four tasks:\n\nMulti-image scenarios include visual instructions incorporating interleaved vision-language input with multiple images. This setting covers 12 challenging real-world tasks included in our training data, such as spotting the difference, visual story telling, image editing instruction generation, interleaved multi-image dialogue, multi-image puzzle, low-level multi-image assessment, etc.\n\nMulti-frame scenarios refer to taking video as input data by sampling it into multiple frames, preserving temporal visual cues across the multi-image sequence. We mainly focus on 2 tasks: video detailed captioning and video VQA.\n\nMulti-view scenarios depict 3D environments by multi-view images from different perspectives, where the visual correspondence and disparity can indicate spatial information in the 3D world. For 3D perception, we include 2 tasks: embodied VQA (dialogue and planning), and 3D scene VQA (captioning and grounding).\n\nMulti-patch scenarios represent the conventional single-image tasks. With the design of ‘any resolution’ in LLaVA-NeXT \\[ [36](https://ar5iv.org/html/2407.07895#bib.bib36 \"\")\\], we divide a high-resolution image into multiple low-resolution patches for efficient visual encoding, compatible with our interleaved multi-image format.\n\n### 3.2 M4-Instruct\n\nTo empower all-round multi-image capabilities, we meticulously curate a comprehensive training dataset including 1177.6K instances, termed M4-Instruct, widely spanning multi-image, multi-frame, and multi-view scenarios with 14 tasks and 41 datasets, along with multi-patch data to preserve basic single-image performance. We showcase task examples of the first three scenarios in Figure [2](https://ar5iv.org/html/2407.07895#S2.F2 \"Figure 2 ‣ Interleaved LMMs. ‣ 2 Related Work ‣ LLaVA-NeXT-Interleave: Tackling Multi-image, Video, and 3D in Large Multimodal Models\").\n\nWe exhibit a data overview of M4-Instruct in Figure [3](https://ar5iv.org/html/2407.07895#S3.F3 \"Figure 3 ‣ 3.1 Task Overview ‣ 3 Interleaved Multi-image Tasks & Data ‣ LLaVA-NeXT-Interleave: Tackling Multi-image, Video, and 3D in Large Multimodal Models\"), and the detailed data statistics in Table [15](https://ar5iv.org/html/2407.07895#A2.T15 \"Table 15 ‣ B.2 Impact of video DPO training on other tasks. ‣ Appendix B Ablation Study ‣ LLaVA-NeXT-Interleave: Tackling Multi-image, Video, and 3D in Large Multimodal Models\").\nFor the multi-image data, most of the datasets are collected from previous public efforts and rigorously converted into our unified format with task-specific instructions, some inspired by DEMON \\[ [27](https://ar5iv.org/html/2407.07895#bib.bib27 \"\")\\] and Mantis \\[ [19](https://ar5iv.org/html/2407.07895#bib.bib19 \"\")\\]. On top of that, we also utilize GPT-4V \\[ [43](https://ar5iv.org/html/2407.07895#bib.bib43 \"\")\\] to annotate 3 new tasks to enable more diverse capabilities, i.e., Real-world Difference, Synthetic Difference, and Twitter Post. For the video data, we collect a 255K subset from LLaVA-Hound \\[ [63](https://ar5iv.org/html/2407.07895#bib.bib63 \"\")\\], including 240K video VQA and 15K video detailed captioning. We also include NExT-QA \\[ [57](https://ar5iv.org/html/2407.07895#bib.bib57 \"\")\\] and STAR \\[ [55](https://ar5iv.org/html/2407.07895#bib.bib55 \"\")\\] to expand our video training data. For the 3D data, we widely gather the training set from nuScenes QA \\[ [6](https://ar5iv.org/html/2407.07895#bib.bib6 \"\")\\], ALFRED \\[ [48](https://ar5iv.org/html/2407.07895#bib.bib48 \"\")\\], ScanQA \\[ [3](https://ar5iv.org/html/2407.07895#bib.bib3 \"\")\\], and 3D-LLM \\[ [16](https://ar5iv.org/html/2407.07895#bib.bib16 \"\")\\], covering both outdoor and indoor scenarios. For the single-image data, we randomly sample 40% of the stage-2 fine-tuning data from LLaVA-NeXT \\[ [24](https://ar5iv.org/html/2407.07895#bib.bib24 \"\")\\], which aims to preserve the single-image capacity.\n\n|     |     |     |     |     |     |     |     |     |     |     |     |     |     |     |     |\n| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n| Model | In-domain Evaluation | Out-domain Evaluation |\n| Avg | SD | IE | VST | TRVQA | MIVQA | Puzzle | QB | NLVR2 | Avg | Math | Sci | Mantis | BLINK | MMMU-mv |\n| GPT-4V \\[ [43](https://ar5iv.org/html/2407.07895#bib.bib43 \"\")\\] | 39.2 | 12.5 | 11.0 | 10.9 | 54.5 | 52.0 | 17.1 | 76.5 | 88.8 | 57.8 | 60.3 | 66.9 | 62.7 | 51.1 | 47.9 |\n| LLaVA-NeXT-Image (7B) \\[ [36](https://ar5iv.org/html/2407.07895#bib.bib36 \"\")\\] | 32.4 | 12.9 | 13.2 | 10.1 | 59.6 | 39.4 | 9.0 | 51.0 | 68.0 | 29.4 | 13.5 | 12.2 | 46.1 | 41.8 | 33.5 |\n| VPG-C (7B) \\[ [28](https://ar5iv.org/html/2407.07895#bib.bib28 \"\")\\] | 35.8 | 27.8 | 15.2 | 21.5 | 38.9 | 46.8 | 2.4 | 57.6 | 73.2 | 34.5 | 24.3 | 23.1 | 52.4 | 43.1 | 29.4 |\n| Mantis (7B) \\[ [19](https://ar5iv.org/html/2407.07895#bib.bib19 \"\")\\] | 39.6 | 17.6 | 11.2 | 12.5 | 45.2 | 52.5 | 25.7 | 69.9 | 87.4 | 39.3 | 27.2 | 29.3 | 59.5 | 46.4 | 34.1 |\n| LLaVA-NeXT-Interleave |\n| 0.5B | 43.9 | 34.3 | 21.6 | 29.7 | 63.9 | 54.8 | 35.4 | 52.0 | 67.8 | 33.1 | 13.3 | 12.2 | 45.6 | 39.2 | 28.6 |\n| 7B | 58.6 | 37.1 | 24.3 | 33.1 | 76.1 | 87.5 | 48.7 | 74.2 | 88.8 | 42.8 | 32.8 | 31.6 | 62.7 | 52.6 | 34.5 |\n| 14B | 62.3 | 40.5 | 24.5 | 33.3 | 78.6 | 95.0 | 59.9 | 76.7 | 91.1 | 44.3 | 33.4 | 32.7 | 66.4 | 52.1 | 37.1 |\n\nTable 1: Results on our LLaVA-Interleave Bench. SD: Spot the Difference, IE: Image Edit Instruction, VST: Visual Story Telling, TRVQA: Text-rich VQA, MIVQA: Multi-image VQA, QB: Q-Bench, SQ: ScanQA, Math: MathVerse-mv, Sci: SciVerse-mv.\n\nTo comprehensively evaluate the interleaved multi-image performance, we introduce the LLaVA-Interleave Bench for LMMs, consisting of 13 challenging tasks with 17K instances. We present a data overview of the benchmark in Figure [2](https://ar5iv.org/html/2407.07895#S2.F2 \"Figure 2 ‣ Interleaved LMMs. ‣ 2 Related Work ‣ LLaVA-NeXT-Interleave: Tackling Multi-image, Video, and 3D in Large Multimodal Models\"), and the detailed data statistics in Table [16](https://ar5iv.org/html/2407.07895#A2.T16 \"Table 16 ‣ B.2 Impact of video DPO training on other tasks. ‣ Appendix B Ablation Study ‣ LLaVA-NeXT-Interleave: Tackling Multi-image, Video, and 3D in Large Multimodal Models\").\nIn detail, we categorize multi-image tasks into two classes:\n\n- •\n\n\nIn-domain Evaluation includes tasks that have been ‘seen’ during our training, designed to verify the model performance within familiar scenarios. We adopt 5 newly curated multi-image tasks corresponding to training datasets, and 2 existing benchmarks, Q-Bench \\[ [56](https://ar5iv.org/html/2407.07895#bib.bib56 \"\")\\] and NLVR2 \\[ [50](https://ar5iv.org/html/2407.07895#bib.bib50 \"\")\\], with 12.9K in total.\n\n- •\n\n\nOut-domain Evaluation involves tasks that don’t overlap with training scenarios, aiming to reveal the generalization capacity of LMMs. We construct 2 new tasks for multi-image mathematical (MathVerse \\[ [65](https://ar5iv.org/html/2407.07895#bib.bib65 \"\")\\]) and scientific (SciVerse \\[ [13](https://ar5iv.org/html/2407.07895#bib.bib13 \"\")\\]) comprehension, and utilize 3 existing benchmarks, Mantis-Eval \\[ [19](https://ar5iv.org/html/2407.07895#bib.bib19 \"\")\\], BLINK \\[ [10](https://ar5iv.org/html/2407.07895#bib.bib10 \"\")\\], and MMMU \\[ [60](https://ar5iv.org/html/2407.07895#bib.bib60 \"\")\\], with 4.1K in total.\n\n\n## 4 Interleaved Visual Instruction Tuning\n\nIn this section, we introduce several key techniques during the interleaved visual instruction tuning of LLaVA-NeXT-Interleave. For architecture designs, we follow LLaVA-NeXT \\[ [24](https://ar5iv.org/html/2407.07895#bib.bib24 \"\")\\] to adopt the most general framework, i.e., a vision encoder \\[ [62](https://ar5iv.org/html/2407.07895#bib.bib62 \"\")\\], an intermediate projector, and a powerful LLM \\[ [4](https://ar5iv.org/html/2407.07895#bib.bib4 \"\")\\]. Then, we consider the following three techniques to achieve improved multi-image performance.\n\n#### Technique 1: Continue training from single-image models.\n\nThe interleaved multi-image tasks can be regarded as an extension of single-image scenarios, more flexible in formats and challenging in reasoning. Therefore, to better leverage the pre-trained single-image proficiency, we adopt an off-the-shelf LLaVA-NeXT-Image \\[ [24](https://ar5iv.org/html/2407.07895#bib.bib24 \"\")\\] as the base model, which has gone through a stage-1 image-caption pre-training and a stage-2 single-image fine-tuning. On top of this model, we perform the interleaved multi-image instruction tuning with our M4-Instruct dataset.\n\n#### Technique 2: Mixed Interleaved data formats during training.\n\nWe adopt two format choices for the positions of image tokens during the interleaved multi-image training. The first is to place all the image tokens in front of the prompt, while maintaining the placeholders ⟨⟨\\\\langleimage⟩⟩\\\\rangle within the text, denoted as ‘In-the-front format’. The second preserves the interleaved format to put image tokens in the place they are originally in, i.e., the positions of ⟨⟨\\\\langleimage⟩⟩\\\\rangle, denoted as ‘interleaved format’. In this way, LLaVA-NeXT-Interleave supports more flexible inference modes, exhibiting robustness to different input formats.\n\n#### Technique 3: Combining different data scenarios improves individual task performance.\n\nMost existing works conduct supervised fine-tuning with only one type of data source, e.g., multi-image tuning of Mantis \\[ [19](https://ar5iv.org/html/2407.07895#bib.bib19 \"\")\\] and multi-frame tuning of LLaMA-VID \\[ [31](https://ar5iv.org/html/2407.07895#bib.bib31 \"\")\\]. Instead, we utilize the M4-Instruct to simultaneously conduct instruction tuning with four different tasks (multi-image/frame/view/patch). With a unified interleaved format, distinct data scenarios have the potential to provide complementary semantics and instruction-following capabilities.\n\n## 5 Experiments\n\nIn Section [5.1](https://ar5iv.org/html/2407.07895#S5.SS1 \"5.1 Settings ‣ 5 Experiments ‣ LLaVA-NeXT-Interleave: Tackling Multi-image, Video, and 3D in Large Multimodal Models\"), we first introduce our evaluation schemes and implementation details. Then, in Section [5.2](https://ar5iv.org/html/2407.07895#S5.SS2 \"5.2 Main Results ‣ 5 Experiments ‣ LLaVA-NeXT-Interleave: Tackling Multi-image, Video, and 3D in Large Multimodal Models\"), we report and analyze the quantitative results in four interleaved multi-image scenarios.\n\n|     |     |     |     |     |     |     |     |     |     |\n| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n| Model | NExTQA | MVBench | ActivityNet-QA | VDD | |     |\n| --- |\n| VideoChat-GPT | |\n| CI | DO | CU | TU | CO |\n| GPT-4V \\[ [43](https://ar5iv.org/html/2407.07895#bib.bib43 \"\")\\] | - | - | - | 4.00 | 4.09 | 3.88 | 4.37 | 3.94 | 4.02 |\n| VideoChatGPT (7B) \\[ [39](https://ar5iv.org/html/2407.07895#bib.bib39 \"\")\\] | - | - | 35.2/2.70 | - | 2.40 | 2.52 | 2.62 | 1.98 | 2.37 |\n| Video-LLaVA (7B) \\[ [32](https://ar5iv.org/html/2407.07895#bib.bib32 \"\")\\] | - | - | 45.3/3.30 | - | 2.87 | 2.94 | 3.44 | 2.45 | 2.51 |\n| VISTA-LLaMA (7B) \\[ [38](https://ar5iv.org/html/2407.07895#bib.bib38 \"\")\\] | - | - | 48.3/3.30 | - | 2.44 | 2.31 | 2.64 | 3.18 | 2.26 |\n| VideoChat2 (7B) \\[ [29](https://ar5iv.org/html/2407.07895#bib.bib29 \"\")\\] | 68.6 | 51.9 | 49.1/3.30 | - | 3.02 | 2.88 | 3.51 | 2.66 | 2.81 |\n| LLaMA-VID (7B) \\[ [31](https://ar5iv.org/html/2407.07895#bib.bib31 \"\")\\] | - | 50.2 | 47.4/3.30 | 2.84 | 3.01 | 2.97 | 3.54 | 2.53 | 2.60 |\n| LLaVA-NeXT-Video (7B) \\[ [67](https://ar5iv.org/html/2407.07895#bib.bib67 \"\")\\] | - | - | 53.5/3.20 | 3.32 | 3.39 | 3.29 | 3.92 | 2.60 | 3.12 |\n| LLaVA-NeXT-Video-DPO (7B) | - | - | 60.2/3.50 | 3.72 | 3.64 | 3.45 | 4.17 | 2.95 | 4.08 |\n| LLaVA-NeXT-Video-DPO (34B) | - | - | 64.4/3.60 | 3.84 | 3.81 | 3.55 | 4.24 | 3.14 | 4.12 |\n| LLaVA-NeXT-Interleave |\n| 0.5B | 59.5 | 45.6 | 48.0/2.84 | 3.25 | 3.12 | 2.97 | 3.62 | 2.36 | 3.27 |\n| 7B | 78.2 | 53.1 | 55.3/3.13 | 3.57 | 3.51 | 3.28 | 3.89 | 2.77 | 3.68 |\n| 14B | 79.1 | 54.9 | 56.2/3.19 | 3.59 | 3.65 | 3.37 | 3.98 | 2.74 | 3.67 |\n| 7B (DPO) | 77.9 | 52.3 | 55.0/3.13 | 3.90 | 3.99 | 3.61 | 4.24 | 3.19 | 4.12 |\n\nTable 2: Results on multi-frame (video) benchmarks. VDD: Video Detailed Description. CI (Correctness of Information), DO (Detail Orientation), CU (Context Understanding), TU (Temporal Understanding), and CO (Consistency).\n\n### 5.1 Settings\n\n#### Evaluation Schemes.\n\nWe evaluate our LLaVA-NeXT-Interleave model on four real-world interleaved scenarios, i.e., multi-image, multi-frame (video), multi-view (3D), and multi-patch (single-image).\n\n- •\n\n\nFor multi-image evaluation, we adopt the proposed LLaVA-Interleave Bench covering comprehensive in-domain and out-domain tasks.\n\n- •\n\n\nFor video evaluation, we utilize the existing NExT-QA \\[ [57](https://ar5iv.org/html/2407.07895#bib.bib57 \"\")\\], MVBench \\[ [30](https://ar5iv.org/html/2407.07895#bib.bib30 \"\")\\], Video Detailed Description (VDD) \\[ [67](https://ar5iv.org/html/2407.07895#bib.bib67 \"\")\\], and ActivityNet-QA (Act) \\[ [59](https://ar5iv.org/html/2407.07895#bib.bib59 \"\")\\]. For ActivityNet-QA, we present both the accuracy and GPT score (Acc/Score). We also evaluate on VideoChat-GPT (VCG) \\[ [40](https://ar5iv.org/html/2407.07895#bib.bib40 \"\")\\] with five metrics: CI (Correctness of Information), DO (Detail Orientation), CU (Context Understanding), TU (Temporal Understanding), and CO (Consistency).\n\n- •\n\n\nFor 3D evaluation, we select ScanQA \\[ [3](https://ar5iv.org/html/2407.07895#bib.bib3 \"\")\\], two tasks from 3D-LLM \\[ [16](https://ar5iv.org/html/2407.07895#bib.bib16 \"\")\\], i.e., 3D-assisted Dialogue and Task Decomposition, and also curate two new test set from nuScenes VQA \\[ [6](https://ar5iv.org/html/2407.07895#bib.bib6 \"\")\\] and ALFRED \\[ [48](https://ar5iv.org/html/2407.07895#bib.bib48 \"\")\\].\n\n\n#### Implementation Details.\n\nFollowing the same architecture in LLaVA-NeXT \\[ [24](https://ar5iv.org/html/2407.07895#bib.bib24 \"\")\\], our LLaVA-NeXT-Interleave adopts Qwen 1.5 \\[ [5](https://ar5iv.org/html/2407.07895#bib.bib5 \"\")\\] as the base LLM with 0.5B, 7B and 14B parameters, SigLIP-400M \\[ [62](https://ar5iv.org/html/2407.07895#bib.bib62 \"\")\\] with 384×\\\\times384 resolutions as the vision encoder, and a two-layer MLP as the projection layer.\n\n|     |     |     |     |     |     |     |\n| --- | --- | --- | --- | --- | --- | --- |\n| Model | In-domain Evaluation |\n| Avg | 3D-assisted | Task | ScanQA | ALFRED | nuScenes |\n| Dialogue | Decomposition | (val) |  | VQA |\n| Flamingo \\[ [1](https://ar5iv.org/html/2407.07895#bib.bib1 \"\")\\] | 20.5 | 27.9 | 33.2 | 31.1 | 5.3 | 4.9 |\n| GPT-4V \\[ [43](https://ar5iv.org/html/2407.07895#bib.bib43 \"\")\\] | 34.6 | 31.2 | 35.4 | 32.6 | 10.3 | 63.7 |\n| Point-Bind & LLM \\[ [14](https://ar5iv.org/html/2407.07895#bib.bib14 \"\")\\] | 22.5 | 38.3 | 35.8 | 34.6 | 0.6 | 3.3 |\n| 3D-LLM \\[ [17](https://ar5iv.org/html/2407.07895#bib.bib17 \"\")\\] | 22.9 | 39.3 | 37.8 | 35.7 | 1.4 | 0.4 |\n| Mantis (7B) \\[ [19](https://ar5iv.org/html/2407.07895#bib.bib19 \"\")\\] | 18.7 | 2.60 | 14.7 | 16.1 | 14.0 | 46.2 |\n| LLaVA-NeXT-Interleave |\n| 0.5B | 53.0 | 67.2 | 48.5 | 29.3 | 57.0 | 62.8 |\n| 7B | 58.2 | 69.3 | 51.4 | 32.2 | 61.6 | 76.5 |\n| 14B | 59.2 | 70.6 | 52.2 | 34.5 | 62.0 | 76.7 |\n\nTable 3: Results on 3D benchmarks. 3D-assisted Dialogue and Task Decomposition are evaluation tasks from 3D-LLM.\n\n|     |     |     |     |     |     |     |     |     |\n| --- | --- | --- | --- | --- | --- | --- | --- | --- |\n| Model | LLM | Avg | ​AI2D | ​​ChartQA | ​DocVQA | MME | SciQA | POPE |\n| Single | 0.5B | 59.8 | 51.7 | 50.2 | 59.1 | 52.8 | 60.0 | 85.4 |\n| Interleave | 60.5 | 52.2 | 52.2 | 59.2 | 52.0 | 60.6 | 86.8 |\n| Single | 7B | 72.3 | 72.7 | 66.3 | 75.6 | 61.0 | 71.1 | 86.9 |\n| Interleave | 73.3 | 73.9 | 67.2 | 75.7 | 63.5 | 72.6 | 86.8 |\n| Single | 14B | 77.2 | 77.5 | 72.1 | 80.0 | 67.7 | 78.9 | 87.3 |\n| Interleave | 76.4 | 76.5 | 71.2 | 78.9 | 66.2 | 77.4 | 87.9 |\n\nTable 4: Results on multi-patch (single-image) benchmarks with different LLM sizes. ‘Single’ and ‘Interleave’ denote LLaVA-NeXT-Image and our model, respectively.\n\n|     |     |     |     |     |     |     |     |     |     |     |     |     |     |     |\n| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n| Continue training | Multi-image | Multi-frame | Multi-view | Single-image |\n| Mantis | BLINK | QB | NLVR2 | Act | MVB | VDD | ScanQA | AI2D | ChartQA | DocVQA | MME\\* | POPE | SQA |\n| From stage-1 pre-training | 41.0 | 37.6 | 47.0 | 54.0 | 44.7/2.17 | 43.0 | 2.96 | 27.7 | 46.3 | 38.3 | 47.5 | 47.1 | 85.4 | 59.4 |\n| From single-image models | 45.6 | 39.2 | 52.0 | 67.8 | 48.0/2.84 | 45.6 | 3.25 | 29.3 | 52.2 | 52.2 | 59.2 | 52.0 | 86.8 | 60.6 |\n\nTable 5: Ablation on whether to continue training from single-image models. QB: Q-Bench, Act: ActivityNet-QA, MVB: MVBench, VDD: Video Detailed Description, MME\\*: Throughout our paper, we convert MME’s score to accuracy by summing up the perception and cognition scores and dividing 2800, SQA: Scienceqa-IMG.\n\nTrainingSettingInferenceSettingAvgSpot theDifferenceVisual StoryTellingText-richVQAQ-BenchIn-the-frontInterleaved52.936.830.570.174.0In-the-front54.336.632.874.775.3InterleavedInterleaved55.437.832.976.276.0In-the-front52.436.129.072.971.8MixedInterleaved57.038.332.578.176.9In-the-front56.637.932.578.476.3\n\nTable 6: Ablation on mixed interleaved data formats. We select several tasks within LLaVA-Interleave Bench for ablation.\n\nDataNExT-QAVDDVideoChatGPTCIDOCUTUCOVideo42.63.463.473.273.872.743.61Video + Single-image67.73.493.463.303.852.713.60Video + Multi-image77.73.503.503.313.902.703.63Video + Both78.23.583.503.273.872.773.68\n\nTable 7: Ablation on the improvement of combined data scenarios for video tasks. CI (Correctness of Information), DO (Detail Orientation), CU (Context Understanding), TU (Temporal Understanding), and CO (Consistency).\n\n### 5.2 Main Results\n\n#### Multi-image Results.\n\nAs reported in Table [1](https://ar5iv.org/html/2407.07895#S3.T1 \"Table 1 ‣ 3.2 M4-Instruct ‣ 3 Interleaved Multi-image Tasks & Data ‣ LLaVA-NeXT-Interleave: Tackling Multi-image, Video, and 3D in Large Multimodal Models\"), the average multi-image performance of LLaVA-NeXT-Interleave surpasses previous open-source models in both in- and out-domain benchmarks. For in-domain evaluation, our model demonstrates significant advantages across various tasks as expected, due to the multi-image instruction tuning with M4-Instruct. For out-domain evaluation, LLaVA-NeXT-Interleave also showcases superior generalization capacity within novel scenarios, e.g., comparable to GPT-4V on Mantis-Eval and BLINK.\n\n#### Multi-frame (Video) Results.\n\nCompared with previous video-based LMMs under similar model sizes, LLaVA-NeXT-Interleave achieves superior results on many benchmarks in Table [2](https://ar5iv.org/html/2407.07895#S5.T2 \"Table 2 ‣ 5 Experiments ‣ LLaVA-NeXT-Interleave: Tackling Multi-image, Video, and 3D in Large Multimodal Models\"), though not specifically designed for video tasks. We also follow LLaVA-Hound to add DPO training after our M4-Instruct tuning. After adding DPO, our 7B model attains SoTA performance on VDD and VideoChat-GPT benchmarks, surpassing the previous LLaVA-NeXT-Video (34B). This demonstrates the effective temporal understanding and reasoning capabilities of our model across sequential frames.\nNote that we calculate the average scores by multiplying a weight of 10 times by the score of Video Detailed Description and VideoChat-GPT.\n\n#### Multi-view (3D) Results.\n\nFor 3D perception in Table [3](https://ar5iv.org/html/2407.07895#S5.T3 \"Table 3 ‣ Implementation Details. ‣ 5.1 Settings ‣ 5 Experiments ‣ LLaVA-NeXT-Interleave: Tackling Multi-image, Video, and 3D in Large Multimodal Models\"), our model also obtains leading results for both indoor and outdoor scenarios on five in-domain benchmarks.\nCompared to 3D-LLM and Point-LLM with additional point clouds as input, LLaVA-NeXT-Interleave only accepts multi-view images to interpret the 3D world, attaining significantly higher scores in challenging 3D scenarios.\n\n#### Multi-patch (single-image) Results.\n\nWe also add 307k (40%) of original LLaVA-NeXT single-image data, which makes our model capable of doing single-image tasks. We use the anyres training for single-image data, which divides an image into multiple patches, forming another multi-image setting. As shown in Table [4](https://ar5iv.org/html/2407.07895#S5.T4 \"Table 4 ‣ Implementation Details. ‣ 5.1 Settings ‣ 5 Experiments ‣ LLaVA-NeXT-Interleave: Tackling Multi-image, Video, and 3D in Large Multimodal Models\"), we maintain the single-image performance of LLaVA-NeXT-Image. As single-image data is of high quality and diversity, adding single-image data also improves the instruction-following ability and enables task transfer from single-image to multi-image, which is demonstrated in Section [6](https://ar5iv.org/html/2407.07895#S6 \"6 Emerging Capabilities ‣ LLaVA-NeXT-Interleave: Tackling Multi-image, Video, and 3D in Large Multimodal Models\").\n\n### 5.3 Ablations of Proposed Techniques\n\nWe study the effectiveness of the three proposed training techniques in Section [4](https://ar5iv.org/html/2407.07895#S4 \"4 Interleaved Visual Instruction Tuning ‣ LLaVA-NeXT-Interleave: Tackling Multi-image, Video, and 3D in Large Multimodal Models\") as below.\n\n- •\n\n\nIn Table [5](https://ar5iv.org/html/2407.07895#S5.T5 \"Table 5 ‣ Implementation Details. ‣ 5.1 Settings ‣ 5 Experiments ‣ LLaVA-NeXT-Interleave: Tackling Multi-image, Video, and 3D in Large Multimodal Models\"), we compare training strategies. It is seen that initialization from a good single-image model checkpoint (from Stage-2) can consistently enhance the interleaved multi-image performance, than directly from a Stage-1 model checkpoint.\n\n- •\n\n\nIn Table [5.1](https://ar5iv.org/html/2407.07895#S5.SS1.SSS0.Px2 \"Implementation Details. ‣ 5.1 Settings ‣ 5 Experiments ‣ LLaVA-NeXT-Interleave: Tackling Multi-image, Video, and 3D in Large Multimodal Models\"), our mixed-format training can benefit the results of both two input formats.\n\n- •\n\n\nIn Table [5.1](https://ar5iv.org/html/2407.07895#S5.SS1.SSS0.Px2 \"Implementation Details. ‣ 5.1 Settings ‣ 5 Experiments ‣ LLaVA-NeXT-Interleave: Tackling Multi-image, Video, and 3D in Large Multimodal Models\"), we progressively incorporate single-image and multi-image data upon the video data. The integration of more sources contributes to enhanced performance, compared with models from individual visual scenarios.\n\n\n## 6 Emerging Capabilities\n\nIn this section, we show some example to demonstrate the emerging capabilities of our model. Emerging capabilities means the capabilities do not trained during training but demonstrated when inference. We mainly showcase the emerging capabilities from three aspects:\n\n1. 1.\n\n\nTask Transfer from Single-image to Multi-image:\nThe capability to reason over one image and tell the funny part is initially observed in single-image models \\[ [35](https://ar5iv.org/html/2407.07895#bib.bib35 \"\")\\], and not included in our multi-image training. As shown in Table [8](https://ar5iv.org/html/2407.07895#S6.T8 \"Table 8 ‣ 6 Emerging Capabilities ‣ LLaVA-NeXT-Interleave: Tackling Multi-image, Video, and 3D in Large Multimodal Models\"), our model is capable of analyzing the fun part within multiple images. This new task is probably emerged by the composition of the single-image capability and multi-image VQA training.\n\n2. 2.\n\n\nTask Transfer from Image to Video: We only include the multi-image Twitter post task in the M4-Instruct training, while our model can directly perform the witter post from a video, as shown in Table [9](https://ar5iv.org/html/2407.07895#S6.T9 \"Table 9 ‣ 6 Emerging Capabilities ‣ LLaVA-NeXT-Interleave: Tackling Multi-image, Video, and 3D in Large Multimodal Models\"). This new task is probably composed by the training data of multi-image Twitter post and video VQA tasks.\n\n3. 3.\n\n\nReal-world Applications: In Tables [10](https://ar5iv.org/html/2407.07895#S6.T10 \"Table 10 ‣ 6 Emerging Capabilities ‣ LLaVA-NeXT-Interleave: Tackling Multi-image, Video, and 3D in Large Multimodal Models\"),  [11](https://ar5iv.org/html/2407.07895#S6.T11 \"Table 11 ‣ 6 Emerging Capabilities ‣ LLaVA-NeXT-Interleave: Tackling Multi-image, Video, and 3D in Large Multimodal Models\"), and [12](https://ar5iv.org/html/2407.07895#S6.T12 \"Table 12 ‣ 6 Emerging Capabilities ‣ LLaVA-NeXT-Interleave: Tackling Multi-image, Video, and 3D in Large Multimodal Models\"), we showcase three real-world scenarios that are not explicitly contained in our interleaved training data, which are multi-image painting style recognition, PPT summary & QA, and multi-doc VQA. This demonstrates our generalization potentials to a broader spectrum of applications.\n\n\nMore interesting demos can be found in our project page111 [https://llava-vl.github.io/blog/2024-06-16-llava-next-interleave/](https://llava-vl.github.io/blog/2024-06-16-llava-next-interleave/ \"\").\n\n|     |     |\n| --- | --- |\n| Task Transfer from Single-image to Multi-image |\n|  | ![[Uncaptioned image]](https://ar5iv.org/html/2407.07895/assets/x2.png) |\n| User | What is fun about the images? |\n| Ours | The humor in these images comes from the anthropomorphized birds engaging in human-like activities and conversations. In the first image, one bird is asking about going to get some fries on the pier, which is a human activity. The second image shows a bird asking about the ”culminating result of consciousness,” which is a philosophical question rather than a literal one. The third image has a bird expressing its desire to do something with the fries on the pier, again referencing a human activity. The anthropomorphism of the birds adds a layer of humor by attributing human thoughts and desires to animals. |\n\nTable 8: An example of emerging capability: multi-image fun part analyze.\n\n|     |     |\n| --- | --- |\n| Task Transfer from Image to Video |\n|  | ![[Uncaptioned image]](https://ar5iv.org/html/2407.07895/assets/x3.png) |\n| User | Help me write a twitter post to describe this video. |\n| Ours | ”Feeling the chill in the air, but the cherry blossoms are a sight to behold! Walking down the street, each person bundled up against the winter chill. The snow-covered trees and market stalls add to the serene beauty of this winter wonderland. #CherryBlossoms #WinterWalk #CityScenes”. |\n\nTable 9: An example of emerging capability: Twitter post for videos.\n\n|     |     |\n| --- | --- |\n| Real-World Applications |\n|  | ![[Uncaptioned image]](https://ar5iv.org/html/2407.07895/assets/x4.png) |\n| User | Do you kown who draw these paintings? |\n| Ours | Yes, these paintings are by the renowned artist Vincent van Gogh. The first painting is his famous work ”The Starry Night,” which depicts a swirling night sky with a bright crescent moon and stars. The second painting is his self-portrait, which shows him smoking a pipe and wearing a hat. The third painting is also a self-portrait, but it features a different expression and hairstyle. The fourth painting is by another artist, not Van Gogh, and depicts a person seated with flowers in the background. |\n\nTable 10: An example of emerging capability: recognizing artists’ painting styles.\n\n|     |     |\n| --- | --- |\n| Real-World Applications |\n|  | ![[Uncaptioned image]](https://ar5iv.org/html/2407.07895/assets/x5.png) |\n| User | The images are the PPT of iPhone 15 review. can you summarize the main information? |\n| Ours | The PPT features a sleek design with a black background and includes text and images related to the iPhone 15. It highlights the phone’s innovative features such as a custom dual glass back cover, a dynamic island display for delivery tracking, and a USB-C compatible fast charging cable. The color options are showcased in a gradient of pink, green, gray, and onyx. The presentation also emphasizes the phone’s powerful processors, including the A16 Bionic chip and A17 Pro chip. |\n| User | What is the price of iPhone 15 plus? |\n| Ours | The price of iPhone 15 plus is Rs. 89,000 as mentioned in the PPT slide. |\n| User | Why the dynamic island useful? |\n| Ours | The dynamic island is useful for delivery tracking, as it allows the user to know when their order will arrive and if there are any delays. It also provides a new way to interact with the phone’s interface, making it easier to navigate and access various features. |\n\nTable 11: An example of emerging capability: PPT summary & VQA.\n\n|     |     |\n| --- | --- |\n| Real-World Applications |\n|  | ![[Uncaptioned image]](https://ar5iv.org/html/2407.07895/assets/x6.png) |\n| User | Hi, there are two candidates, can you provide a brief description for each of them for me? |\n| Ours | Certainly! Here’s a brief description of each candidate: 1. Oprah Winfrey: - Professional Experience: Known for her talk show, ”The Oprah Winfrey Show,” and her work on ”COVID-19” as a presenter on Apple TV. - Skills: Emphasized on emotional intelligence, interpersonal skills, and creativity. - Honors & Awards: Notable achievements include the Golden Globe Award for Best Television Series and the Golden Globe Award for Best Television Special. 2. Steve Jobs: - Professional Experience: Co-founder of Apple Inc., where he led the development of iconic products like the iMac, iPod, and iPhone. - Skills: Highlighted as a thinker with a focus on innovation and problem-solving. - Honors & Awards: Recognized with numerous accolades, including the MacArthur Fellowship and the NeXT Computer Science Award. Please note that these descriptions are based on the information provided in the images and do not include any personal details or specific accomplishments mentioned in the images. |\n| User | Which of them better suits the role of the Congressman of the US? Why? |\n| Ours | The first resume, featuring Oprah Winfrey, would better suit the role of a Congressman because it highlights skills and experiences that are relevant to political office, such as leadership, public speaking, and media experience. These qualities are essential for a politician to effectively represent their constituents and engage in legislative processes. The second resume, while it could be suitable for a creative or entrepreneurial role, does not specifically mention skills or experiences that align with the responsibilities of a Congressman. |\n\nTable 12: An example of emerging capability: multi-doc VQA.\n\n## 7 Conclusion\n\nIn conclusion, our research highlights the transformative potential of LLaVA-NeXT-Interleave in unifying and advancing the capabilities of Large Multimodal Models (LMMs) across diverse visual tasks. By leveraging the interleaved data format, we effectively integrate multi-image, video, 3D, and single-image scenarios, offering a cohesive approach to handling thwoese varied challenges. The introduction of the comprehensive M4-Instruct dataset and the LLaVA-Interleave Bench provides a solid foundation for training and evaluating LMMs, ensuring high-quality performance across multiple domains. Our extensive experiments validate that LLaVA-NeXT-Interleave not only sets new state-of-the-art benchmarks in multi-image tasks but also maintains exceptional performance in single-image tasks. Furthermore, the model exhibits promising emerging capabilities, such as cross-task transfer, showcasing its versatility and potential for broader applications. This work sets a new precedent in the field, paving the way for future advancements in multimodal AI and complex visual understanding tasks.\n\n## References\n\n- \\[1\\]\nJean-Baptiste Alayrac, Jeff Donahue, Pauline Luc, Antoine Miech, Iain Barr, Yana Hasson, Karel Lenc, Arthur Mensch, Katie Millican, Malcolm Reynolds, et al.\n\nFlamingo: a visual language model for few-shot learning.\n\narXiv preprint, 2022.\n\n- \\[2\\]\nAnas Awadalla, Irena Gao, Josh Gardner, Jack Hessel, Yusuf Hanafy, Wanrong Zhu, Kalyani Marathe, Yonatan Bitton, Samir Gadre, Shiori Sagawa, et al.\n\nOpenflamingo: An open-source framework for training large autoregressive vision-language models.\n\narXiv preprint arXiv:2308.01390, 2023.\n\n- \\[3\\]\nDaichi Azuma, Taiki Miyanishi, Shuhei Kurita, and Motoaki Kawanabe.\n\nScanqa: 3d question answering for spatial scene understanding.\n\nIn proceedings of the IEEE/CVF conference on computer vision and pattern recognition, pages 19129–19139, 2022.\n\n- \\[4\\]\nJinze Bai, Shuai Bai, Yunfei Chu, Zeyu Cui, Kai Dang, Xiaodong Deng, Yang Fan, Wenbin Ge, Yu Han, Fei Huang, Binyuan Hui, Luo Ji, Mei Li, Junyang Lin, Runji Lin, Dayiheng Liu, Gao Liu, Chengqiang Lu, Keming Lu, Jianxin Ma, Rui Men, Xingzhang Ren, Xuancheng Ren, Chuanqi Tan, Sinan Tan, Jianhong Tu, Peng Wang, Shijie Wang, Wei Wang, Shengguang Wu, Benfeng Xu, Jin Xu, An Yang, Hao Yang, Jian Yang, Shusheng Yang, Yang Yao, Bowen Yu, Hongyi Yuan, Zheng Yuan, Jianwei Zhang, Xingxuan Zhang, Yichang Zhang, Zhenru Zhang, Chang Zhou, Jingren Zhou, Xiaohuan Zhou, and Tianhang Zhu.\n\nQwen technical report.\n\narXiv preprint arXiv:2309.16609, 2023.\n\n- \\[5\\]\nJinze Bai, Shuai Bai, Shusheng Yang, Shijie Wang, Sinan Tan, Peng Wang, Junyang Lin, Chang Zhou, and Jingren Zhou.\n\nQwen-vl: A versatile vision-language model for understanding, localization, text reading, and beyond.\n\narXiv preprint arXiv:2308.12966, 2023.\n\n- \\[6\\]\nAnkan Bansal, Yuting Zhang, and Rama Chellappa.\n\nVisual question answering on image sets.\n\nIn Computer Vision–ECCV 2020: 16th European Conference, Glasgow, UK, August 23–28, 2020, Proceedings, Part XXI 16, pages 51–67. Springer, 2020.\n\n- \\[7\\]\nGuo Chen, Yin-Dong Zheng, Jiahao Wang, Jilan Xu, Yifei Huang, Junting Pan, Yi Wang, Yali Wang, Yu Qiao, Tong Lu, et al.\n\nVideollm: Modeling video sequence with large language models.\n\narXiv preprint arXiv:2305.13292, 2023.\n\n- \\[8\\]\nJacob Devlin, Ming-Wei Chang, Kenton Lee, and Kristina Toutanova.\n\nBert: Pre-training of deep bidirectional transformers for language understanding.\n\narXiv preprint arXiv:1810.04805, 2018.\n\n- \\[9\\]\nAlexey Dosovitskiy, Lucas Beyer, Alexander Kolesnikov, Dirk Weissenborn, Xiaohua Zhai, Thomas Unterthiner, Mostafa Dehghani, Matthias Minderer, Georg Heigold, Sylvain Gelly, et al.\n\nAn image is worth 16x16 words: Transformers for image recognition at scale.\n\narXiv preprint arXiv:2010.11929, 2020.\n\n- \\[10\\]\nXingyu Fu, Yushi Hu, Bangzheng Li, Yu Feng, Haoyu Wang, Xudong Lin, Dan Roth, Noah A Smith, Wei-Chiu Ma, and Ranjay Krishna.\n\nBlink: Multimodal large language models can see but not perceive.\n\narXiv preprint arXiv:2404.12390, 2024.\n\n- \\[11\\]\nPeng Gao, Renrui Zhang, Chris Liu, Longtian Qiu, Siyuan Huang, Weifeng Lin, Shitian Zhao, Shijie Geng, Ziyi Lin, Peng Jin, et al.\n\nSphinx-x: Scaling data and parameters for a family of multi-modal large language models.\n\narXiv preprint arXiv:2402.05935, 2024.\n\n- \\[12\\]\nGoogle Gemini Team.\n\nGemini: a family of highly capable multimodal models.\n\narXiv preprint arXiv:2312.11805, 2023.\n\n- \\[13\\]\nZiyu Guo, Renrui Zhang, Hao Chen, Jialin Gao, Peng Gao, Hongsheng Li, and Pheng-Ann Heng.\n\nSciverse.\n\nhttps://sciverse-cuhk.github.io, 2024.\n\n- \\[14\\]\nZiyu Guo, Renrui Zhang, Xiangyang Zhu, Yiwen Tang, Xianzheng Ma, Jiaming Han, Kexin Chen, Peng Gao, Xianzhi Li, Hongsheng Li, et al.\n\nPoint-bind & point-llm: Aligning point cloud with multi-modality for 3d understanding, generation, and instruction following.\n\narXiv preprint arXiv:2309.00615, 2023.\n\n- \\[15\\]\nJiaming Han, Renrui Zhang, Wenqi Shao, Peng Gao, Peng Xu, Han Xiao, Kaipeng Zhang, Chris Liu, Song Wen, Ziyu Guo, et al.\n\nImagebind-llm: Multi-modality instruction tuning.\n\narXiv preprint arXiv:2309.03905, 2023.\n\n- \\[16\\]\nYining Hong, Haoyu Zhen, Peihao Chen, Shuhong Zheng, Yilun Du, Zhenfang Chen, and Chuang Gan.\n\n3d-llm: Injecting the 3d world into large language models.\n\nAdvances in Neural Information Processing Systems, 36:20482–20494, 2023.\n\n- \\[17\\]\nYining Hong, Haoyu Zhen, Peihao Chen, Shuhong Zheng, Yilun Du, Zhenfang Chen, and Chuang Gan.\n\n3d-llm: Injecting the 3d world into large language models, 2023.\n\n- \\[18\\]\nShaohan Huang, Li Dong, Wenhui Wang, Yaru Hao, Saksham Singhal, Shuming Ma, Tengchao Lv, Lei Cui, Owais Khan Mohammed, Qiang Liu, Kriti Aggarwal, Zewen Chi, Johan Bjorck, Vishrav Chaudhary, Subhojit Som, Xia Song, and Furu Wei.\n\nLanguage is not all you need: Aligning perception with language models.\n\nArXiv, abs/2302.14045, 2023.\n\n- \\[19\\]\nDongfu Jiang, Xuan He, Huaye Zeng, Cong Wei, Max Ku, Qian Liu, and Wenhu Chen.\n\nMantis: Interleaved multi-image instruction tuning.\n\narXiv preprint arXiv:2405.01483, 2024.\n\n- \\[20\\]\nYixing Jiang, Jeremy Irvin, Ji Hun Wang, Muhammad Ahmed Chaudhry, Jonathan H Chen, and Andrew Y Ng.\n\nMany-shot in-context learning in multimodal foundation models.\n\narXiv preprint arXiv:2405.09798, 2024.\n\n- \\[21\\]\nMehran Kazemi, Nishanth Dikkala, Ankit Anand, Petar Devic, Ishita Dasgupta, Fangyu Liu, Bahare Fatemi, Pranjal Awasthi, Dee Guo, Sreenivas Gollapudi, et al.\n\nRemi: A dataset for reasoning with multiple images.\n\narXiv preprint arXiv:2406.09175, 2024.\n\n- \\[22\\]\nHugo Laurençon, Lucile Saulnier, Léo Tronchon, Stas Bekman, Amanpreet Singh, Anton Lozhkov, Thomas Wang, Siddharth Karamcheti, Alexander Rush, Douwe Kiela, et al.\n\nObelics: An open web-scale filtered dataset of interleaved image-text documents.\n\nAdvances in Neural Information Processing Systems, 36, 2024.\n\n- \\[23\\]\nHugo Laurençon, Léo Tronchon, Matthieu Cord, and Victor Sanh.\n\nWhat matters when building vision-language models?\n\narXiv preprint arXiv:2405.02246, 2024.\n\n- \\[24\\]\nBo Li, Kaichen Zhang, Hao Zhang, Dong Guo, Renrui Zhang, Feng Li, Yuanhan Zhang, Ziwei Liu, and Chunyuan Li.\n\nLlava-next: Stronger llms supercharge multimodal capabilities in the wild, May 2024.\n\n- \\[25\\]\nBo Li, Yuanhan Zhang, Liangyu Chen, Jinghao Wang, Fanyi Pu, Jingkang Yang, Chunyuan Li, and Ziwei Liu.\n\nMimic-it: Multi-modal in-context instruction tuning.\n\narXiv preprint arXiv:2306.05425, 2023.\n\n- \\[26\\]\nJunnan Li, Dongxu Li, Caiming Xiong, and Steven Hoi.\n\nBlip: Bootstrapping language-image pre-training for unified vision-language understanding and generation.\n\nIn International Conference on Machine Learning, pages 12888–12900. PMLR, 2022.\n\n- \\[27\\]\nJuncheng Li, Kaihang Pan, Zhiqi Ge, Minghe Gao, Wei Ji, Wenqiao Zhang, Tat-Seng Chua, Siliang Tang, Hanwang Zhang, and Yueting Zhuang.\n\nFine-tuning multimodal llms to follow zero-shot demonstrative instructions.\n\nIn The Twelfth International Conference on Learning Representations, 2023.\n\n- \\[28\\]\nJuncheng Li, Kaihang Pan, Zhiqi Ge, Minghe Gao, Wei Ji, Wenqiao Zhang, Tat-Seng Chua, Siliang Tang, Hanwang Zhang, and Yueting Zhuang.\n\nFine-tuning multimodal llms to follow zero-shot demonstrative instructions, 2024.\n\n- \\[29\\]\nKunChang Li, Yinan He, Yi Wang, Yizhuo Li, Wenhai Wang, Ping Luo, Yali Wang, Limin Wang, and Yu Qiao.\n\nVideochat: Chat-centric video understanding.\n\narXiv preprint arXiv:2305.06355, 2023.\n\n- \\[30\\]\nKunchang Li, Yali Wang, Yinan He, Yizhuo Li, Yi Wang, Yi Liu, Zun Wang, Jilan Xu, Guo Chen, Ping Luo, et al.\n\nMvbench: A comprehensive multi-modal video understanding benchmark.\n\nIn Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition, pages 22195–22206, 2024.\n\n- \\[31\\]\nYanwei Li, Chengyao Wang, and Jiaya Jia.\n\nLlama-vid: An image is worth 2 tokens in large language models.\n\narXiv preprint arXiv:2311.17043, 2023.\n\n- \\[32\\]\nBin Lin, Yang Ye, Bin Zhu, Jiaxi Cui, Munan Ning, Peng Jin, and Li Yuan.\n\nVideo-llava: Learning united visual representation by alignment before projection, 2023.\n\n- \\[33\\]\nJi Lin, Hongxu Yin, Wei Ping, Pavlo Molchanov, Mohammad Shoeybi, and Song Han.\n\nVila: On pre-training for visual language models.\n\nIn Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition, pages 26689–26699, 2024.\n\n- \\[34\\]\nZiyi Lin, Chris Liu, Renrui Zhang, Peng Gao, Longtian Qiu, Han Xiao, Han Qiu, Chen Lin, Wenqi Shao, Keqin Chen, et al.\n\nSphinx: The joint mixing of weights, tasks, and visual embeddings for multi-modal large language models.\n\narXiv preprint arXiv:2311.07575, 2023.\n\n- \\[35\\]\nHaotian Liu, Chunyuan Li, Yuheng Li, and Yong Jae Lee.\n\nImproved baselines with visual instruction tuning, 2023.\n\n- \\[36\\]\nHaotian Liu, Chunyuan Li, Yuheng Li, Bo Li, Yuanhan Zhang, Sheng Shen, and Yong Jae Lee.\n\nLlava-next: Improved reasoning, ocr, and world knowledge, January 2024.\n\n- \\[37\\]\nHaotian Liu, Chunyuan Li, Qingyang Wu, and Yong Jae Lee.\n\nVisual instruction tuning.\n\nIn NeurIPS, 2023.\n\n- \\[38\\]\nFan Ma, Xiaojie Jin, Heng Wang, Yuchen Xian, Jiashi Feng, and Yi Yang.\n\nVista-llama: Reliable video narrator via equal distance to visual tokens, 2023.\n\n- \\[39\\]\nMuhammad Maaz, Hanoona Rasheed, Salman Khan, and Fahad Shahbaz Khan.\n\nVideo-chatgpt: Towards detailed video understanding via large vision and language models, 2024.\n\n- \\[40\\]\nMuhammad Maaz, Hanoona Rasheed, Salman Khan, and Fahad Shahbaz Khan.\n\nVideo-chatgpt: Towards detailed video understanding via large vision and language models.\n\nIn Proceedings of the 62nd Annual Meeting of the Association for Computational Linguistics (ACL 2024), 2024.\n\n- \\[41\\]\nBrandon McKinzie, Zhe Gan, Jean-Philippe Fauconnier, Sam Dodge, Bowen Zhang, Philipp Dufter, Dhruti Shah, Xianzhi Du, Futang Peng, Floris Weers, et al.\n\nMm1: Methods, analysis & insights from multimodal llm pre-training.\n\narXiv preprint arXiv:2403.09611, 2024.\n\n- \\[42\\]\nOpenAI.\n\nGpt-4 technical report, 2023.\n\n- \\[43\\]\nOpenAI.\n\nGPT-4V(ision) system card, 2023.\n\n- \\[44\\]\nMaxime Oquab, Timothée Darcet, Théo Moutakanni, Huy Vo, Marc Szafraniec, Vasil Khalidov, Pierre Fernandez, Daniel Haziza, Francisco Massa, Alaaeldin El-Nouby, et al.\n\nDinov2: Learning robust visual features without supervision.\n\narXiv preprint arXiv:2304.07193, 2023.\n\n- \\[45\\]\nAlec Radford, Jong Wook Kim, Chris Hallacy, Aditya Ramesh, Gabriel Goh, Sandhini Agarwal, Girish Sastry, Amanda Askell, Pamela Mishkin, Jack Clark, et al.\n\nLearning transferable visual models from natural language supervision.\n\nIn International Conference on Machine Learning, pages 8748–8763. PMLR, 2021.\n\n- \\[46\\]\nChristoph Schuhmann, Richard Vencu, Romain Beaumont, Robert Kaczmarczyk, Clayton Mullis, Aarush Katta, Theo Coombes, Jenia Jitsev, and Aran Komatsuzaki.\n\nLaion-400m: Open dataset of clip-filtered 400 million image-text pairs.\n\narXiv preprint arXiv:2111.02114, 2021.\n\n- \\[47\\]\nPiyush Sharma, Nan Ding, Sebastian Goodman, and Radu Soricut.\n\nConceptual captions: A cleaned, hypernymed, image alt-text dataset for automatic image captioning.\n\nIn Proceedings of the 56th Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers), pages 2556–2565, 2018.\n\n- \\[48\\]\nMohit Shridhar, Jesse Thomason, Daniel Gordon, Yonatan Bisk, Winson Han, Roozbeh Mottaghi, Luke Zettlemoyer, and Dieter Fox.\n\nAlfred: A benchmark for interpreting grounded instructions for everyday tasks.\n\nIn Proceedings of the IEEE/CVF conference on computer vision and pattern recognition, pages 10740–10749, 2020.\n\n- \\[49\\]\nMustafa Shukor, Alexandre Rame, Corentin Dancette, and Matthieu Cord.\n\nBeyond task performance: Evaluating and reducing the flaws of large multimodal models with in-context learning.\n\narXiv preprint arXiv:2310.00647, 2023.\n\n- \\[50\\]\nAlane Suhr, Stephanie Zhou, Ally Zhang, Iris Zhang, Huajun Bai, and Yoav Artzi.\n\nA corpus for reasoning about natural language grounded in photographs.\n\narXiv preprint arXiv:1811.00491, 2018.\n\n- \\[51\\]\nQuan Sun, Yufeng Cui, Xiaosong Zhang, Fan Zhang, Qiying Yu, Yueze Wang, Yongming Rao, Jingjing Liu, Tiejun Huang, and Xinlong Wang.\n\nGenerative multimodal models are in-context learners.\n\nIn Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition, pages 14398–14409, 2024.\n\n- \\[52\\]\nHugo Touvron, Thibaut Lavril, Gautier Izacard, Xavier Martinet, Marie-Anne Lachaux, Timothée Lacroix, Baptiste Rozière, Naman Goyal, Eric Hambro, Faisal Azhar, et al.\n\nLlama: Open and efficient foundation language models.\n\narXiv preprint arXiv:2302.13971, 2023.\n\n- \\[53\\]\nHugo Touvron, Louis Martin, Kevin Stone, Peter Albert, Amjad Almahairi, Yasmine Babaei, Nikolay Bashlykov, Soumya Batra, Prajjwal Bhargava, Shruti Bhosale, et al.\n\nLlama 2: Open foundation and fine-tuned chat models.\n\narXiv preprint arXiv:2307.09288, 2023.\n\n- \\[54\\]\nFei Wang, Xingyu Fu, James Y Huang, Zekun Li, Qin Liu, Xiaogeng Liu, Mingyu Derek Ma, Nan Xu, Wenxuan Zhou, Kai Zhang, et al.\n\nMuirbench: A comprehensive benchmark for robust multi-image understanding.\n\narXiv preprint arXiv:2406.09411, 2024.\n\n- \\[55\\]\nBo Wu, Shoubin Yu, Zhenfang Chen, Joshua B Tenenbaum, and Chuang Gan.\n\nStar: A benchmark for situated reasoning in real-world videos.\n\narXiv preprint arXiv:2405.09711, 2024.\n\n- \\[56\\]\nHaoning Wu, Zicheng Zhang, Erli Zhang, Chaofeng Chen, Liang Liao, Annan Wang, Chunyi Li, Wenxiu Sun, Qiong Yan, Guangtao Zhai, et al.\n\nQ-bench: A benchmark for general-purpose foundation models on low-level vision.\n\narXiv preprint arXiv:2309.14181, 2023.\n\n- \\[57\\]\nJunbin Xiao, Xindi Shang, Angela Yao, and Tat-Seng Chua.\n\nNext-qa: Next phase of question-answering to explaining temporal actions.\n\nIn Proceedings of the IEEE/CVF conference on computer vision and pattern recognition, pages 9777–9786, 2021.\n\n- \\[58\\]\nRunsen Xu, Xiaolong Wang, Tai Wang, Yilun Chen, Jiangmiao Pang, and Dahua Lin.\n\nPointllm: Empowering large language models to understand point clouds.\n\narXiv preprint arXiv:2308.16911, 2023.\n\n- \\[59\\]\nZhou Yu, Dejing Xu, Jun Yu, Ting Yu, Zhou Zhao, Yueting Zhuang, and Dacheng Tao.\n\nActivitynet-qa: A dataset for understanding complex web videos via question answering.\n\nIn Proceedings of the AAAI Conference on Artificial Intelligence, volume 33, pages 9127–9134, 2019.\n\n- \\[60\\]\nXiang Yue, Yuansheng Ni, Kai Zhang, Tianyu Zheng, Ruoqi Liu, Ge Zhang, Samuel Stevens, Dongfu Jiang, Weiming Ren, Yuxuan Sun, et al.\n\nMmmu: A massive multi-discipline multimodal understanding and reasoning benchmark for expert agi.\n\nIn Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition, pages 9556–9567, 2024.\n\n- \\[61\\]\nXiang Yue, Yuansheng Ni, Kai Zhang, Tianyu Zheng, Ruoqi Liu, Ge Zhang, Samuel Stevens, Dongfu Jiang, Weiming Ren, Yuxuan Sun, Cong Wei, Botao Yu, Ruibin Yuan, Renliang Sun, Ming Yin, Boyuan Zheng, Zhenzhu Yang, Yibo Liu, Wenhao Huang, Huan Sun, Yu Su, and Wenhu Chen.\n\nMmmu: A massive multi-discipline multimodal understanding and reasoning benchmark for expert agi.\n\narXiv preprint arXiv:2311.16502, 2023.\n\n- \\[62\\]\nXiaohua Zhai, Basil Mustafa, Alexander Kolesnikov, and Lucas Beyer.\n\nSigmoid loss for language image pre-training.\n\nIn Proceedings of the IEEE/CVF International Conference on Computer Vision, pages 11975–11986, 2023.\n\n- \\[63\\]\nRuohong Zhang, Liangke Gui, Zhiqing Sun, Yihao Feng, Keyang Xu, Yuanhan Zhang, Di Fu, Chunyuan Li, Alexander Hauptmann, Yonatan Bisk, et al.\n\nDirect preference optimization of video large multimodal models from language model reward.\n\narXiv preprint arXiv:2404.01258, 2024.\n\n- \\[64\\]\nRenrui Zhang, Jiaming Han, Aojun Zhou, Xiangfei Hu, Shilin Yan, Pan Lu, Hongsheng Li, Peng Gao, and Yu Qiao.\n\nLLaMA-adapter: Efficient fine-tuning of large language models with zero-initialized attention.\n\nIn The Twelfth International Conference on Learning Representations, 2024.\n\n- \\[65\\]\nRenrui Zhang, Dongzhi Jiang, Yichi Zhang, Haokun Lin, Ziyu Guo, Pengshuo Qiu, Aojun Zhou, Pan Lu, Kai-Wei Chang, Peng Gao, et al.\n\nMathverse: Does your multi-modal llm truly see the diagrams in visual math problems?\n\narXiv preprint arXiv:2403.14624, 2024.\n\n- \\[66\\]\nRenrui Zhang, Xinyu Wei, Dongzhi Jiang, Yichi Zhang, Ziyu Guo, Chengzhuo Tong, Jiaming Liu, Aojun Zhou, Bin Wei, Shanghang Zhang, et al.\n\nMavis: Mathematical visual instruction tuning.\n\narXiv preprint arXiv:2407.08739, 2024.\n\n- \\[67\\]\nYuanhan Zhang, Bo Li, haotian Liu, Yong jae Lee, Liangke Gui, Di Fu, Jiashi Feng, Ziwei Liu, and Chunyuan Li.\n\nLlava-next: A strong zero-shot video understanding model, April 2024.\n\n- \\[68\\]\nWanrong Zhu, Jack Hessel, Anas Awadalla, Samir Yitzhak Gadre, Jesse Dodge, Alex Fang, Youngjae Yu, Ludwig Schmidt, William Yang Wang, and Yejin Choi.\n\nMultimodal c4: An open, billion-scale corpus of images interleaved with text.\n\nAdvances in Neural Information Processing Systems, 36, 2024.\n\n\n## Appendix A Data Statistics\n\nThe detailed data statistics of M4-Instruct is shown in Table [15](https://ar5iv.org/html/2407.07895#A2.T15 \"Table 15 ‣ B.2 Impact of video DPO training on other tasks. ‣ Appendix B Ablation Study ‣ LLaVA-NeXT-Interleave: Tackling Multi-image, Video, and 3D in Large Multimodal Models\").\n\nThe detailed data statistics of LLaVA-Interleave Bench is shown in Table [16](https://ar5iv.org/html/2407.07895#A2.T16 \"Table 16 ‣ B.2 Impact of video DPO training on other tasks. ‣ Appendix B Ablation Study ‣ LLaVA-NeXT-Interleave: Tackling Multi-image, Video, and 3D in Large Multimodal Models\").\n\n## Appendix B Ablation Study\n\n### B.1 Pool vs not Pool Vision Tokens for video tasks.\n\nSimilar to LLaVA-NEXT-Video, we adopt a ”Pooling to 1/4” strategy for which we pool the width and heighs of feature maps to 1/2 therefore reducing the number to totals to 1/4. We study the impact of image token pooling. We train and infer our model under two settings: pooling to 1/4 and not pooling with ShareGPTVideo-Caption+QA(255K) data.\nPooling to a 1/4 setting is similar to LLaVA-NEXT-Video, which uses the pooling technique to trade-off between the number of image tokens and the number of frames.\nIn our experiment, we find that not pooling yields better performance under similar #image tokens.\nDuring training, we sample 10 frames for videos. In this table, we also observe that adding more frames (from 10 to 16) during inference improves performance.\n\n### B.2 Impact of video DPO training on other tasks.\n\nIn Table [14](https://ar5iv.org/html/2407.07895#A2.T14 \"Table 14 ‣ B.2 Impact of video DPO training on other tasks. ‣ Appendix B Ablation Study ‣ LLaVA-NeXT-Interleave: Tackling Multi-image, Video, and 3D in Large Multimodal Models\"), we compare the results of doing video DPO on other tasks. Though DPO significantly improves the video performance as shown in Table [2](https://ar5iv.org/html/2407.07895#S5.T2 \"Table 2 ‣ 5 Experiments ‣ LLaVA-NeXT-Interleave: Tackling Multi-image, Video, and 3D in Large Multimodal Models\"), it slightly impacts the performance of other tasks.\n\n|     |     |     |     |     |     |     |     |     |     |     |     |\n| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n| Training | Inference | #frames | \\# Image tokens | Act | Avg | VDD | VideoChatGPT |\n|  |  |  |  |  |  |  | CI | DO | CU | TU | CO |\n| Pooling 1/4 | Pooling 1/4 | 40 | 40x729x1/4=10x729 | 52.8/3.53 | 3.35 | 3.38 | 3.46 | 3.25 | 3.87 | 2.59 | 3.57 |\n| Pooling 1/4 | Pooling 1/4 | 64 | 64x729x1/4=16x729 | 52.7/3.53 | 3.33 | 3.38 | 3.45 | 3.23 | 3.86 | 2.49 | 3.55 |\n| Not Pooling | Not Pooling | 10 | 10x729 | 52.9/3.48 | 3.38 | 3.46 | 3.43 | 3.26 | 3.85 | 2.64 | 3.61 |\n| Not Pooling | Not Pooling | 16 | 16x729 | 54.4/3.51 | 3.41 | 3.46 | 3.48 | 3.28 | 3.87 | 2.74 | 3.62 |\n\nTable 13: Ablation to compare pooling and not pooling.\n\n|     |     |     |     |     |     |     |     |     |     |     |     |\n| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n| Setting | Multi-image | Multi-view | Single-image |\n| Mantis | BLINK | QB | NLVR2 | ScanQA | AI2D | ChartQA | DocVQA | MME\\* | POPE | SQA |\n| Before Video-DPO | 62.7 | 52.7 | 73 | 89.1 | 32.2 | 73.9 | 67.2 | 75.7 | 63.5 | 85.4 | 72.6 |\n| After Video-DPO | 60.8 | 51.7 | 86.8 | 87.7 | 25.5 | 72.2 | 56.1 | 73.1 | 62.6 | 86.6 | 71.7 |\n\nTable 14: Ablation on the impact of video dpo on the performance of other tasks. QB: Q-Bench, Act: ActivityNet-QA, MVB: MVBench, VDD: Video Detailed Description, MME\\*: Throughout our paper, we convert MME’s score to accuracy by summing up the perception and cognition scores and dividing 2800, SQA: Scienceqa-IMG.\n\n|     |     |     |     |\n| --- | --- | --- | --- |\n| Task | Dataset | Scenario | \\# Samples |\n| Multi-image Scenarios |  |  |  |\n| Spot the Difference(42.6K) | Real-world Difference | Realistic | 6.7K |\n|  | Synthetic Difference | Synthetic | 7.0K |\n|  | Spot-the-Diff | Surveilance | 10.8K |\n|  | Birds-to-Words | Birds | 14.2K |\n|  | CLEVR-Change | Solids | 3.9K |\n| Image Edit Instruction(67.7K) | HQ-Edit | Synthetic | 50K |\n|  | MagicBrush | Realistic | 14.2K |\n|  | IEdit | Realistic | 3.5K |\n| Visual Story Telling(67.5K) | AESOP | Cartoon | 6.9K |\n|  | FlintstonesSV | Cartoon | 22.3K |\n|  | PororoSV | Cartoon | 12.3K |\n|  | VIST | Realistic | 26K |\n| Text-rich VQA(21.3K) | WebQA | Webpage | 9.3K |\n|  | TQA | Textbook | 8.2K |\n|  | OCR-VQA | OCR | 1.9K |\n|  | DocVQA | Document | 1.9K |\n| Multi-image VQA(153.5K) | NLVR2 | Realistic | 86.4K |\n|  | MIT-States\\_StateCoherence | General | 1.9K |\n|  | MIT-States\\_PropertyCoherence | General | 1.9K |\n|  | RecipeQA\\_ImageCoherence | Recipe | 8.7K |\n|  | VISION | Industrial | 9.9K |\n|  | Multi-VQA | General | 5K |\n|  | IconQA | General | 34.6K |\n| Low-level Comparison(65.9K) | Coinstruct | Low-level | 50K |\n|  | Dreamsim | Low-level | 15.9K |\n| Image-caption Comprehension (41.8K) | ImageCoDe | General | 16.6K |\n|  | Contrast-Caption | General | 25.2K |\n| Daily Scenarios (5.7K) | MMChat\\_Twitter\\_Post | General | 5.7K |\n| Multi-image Puzzle (35K) | Raven | Abstract | 35K |\n| Multi-frame (Video) Scenarios |  |  |  |\n| Video QA(246.9K) | NExT-QA | General | 3.9K |\n|  | STAR | General | 3K |\n|  | ShareGPTVideo-VQA | General | 240K |\n| Video Detailed Captioning (15K) | ShareGPTVideo-Caption | General | 15K |\n| Multi-view (3D) Scenarios |  |  |  |\n| Scene VQA(45.4K) | Nuscenes | Outdoor | 9.8K |\n|  | ScanQA | Indoor Realistic | 25.6k |\n|  | 3D-LLM-Scene | Indoor Realistic | 10K |\n| Embodied VQA(62.5K) | ALFRED | Indoor Synthetic | 22.6K |\n|  | 3D-LLM-Dialogue | Indoor Realistic | 20K |\n|  | 3D-LLM-Planning | Indoor Realistic | 19.9K |\n| Single-image Scenarios |  |  |  |\n| Single-image Tasks(307K) | Randomly sampling 40% SFT data of LLaVA-NeXT | General | 307K |\n\nTable 15: M4-Instruct detailed datasets.\n\n|     |     |     |     |\n| --- | --- | --- | --- |\n| Task | Dataset | Scenario | \\# Samples |\n| In-domain Evaluation - Newly Curated Benchmarks |  |  |  |\n| Spot the Difference(0.3K) | Spot-the-Diff | Surveilance | 0.1K |\n|  | Birds-to-Words | Birds | 0.1K |\n|  | CLEVR-Change | Solids | 0.1K |\n| Image Edit Instruction(2K) | HQ-Edit | Sythentic | 1K |\n|  | MagicBrush | Realistic | 0.9K |\n|  | IEdit | Realistic | 0.1K |\n| Visual Story Telling(0.4K) | AESOP | Cartoon | 0.1K |\n|  | FlintstonesSV | Cartoon | 0.1K |\n|  | PororoSV | Cartoon | 0.1K |\n|  | VIST | Realistic | 0.1K |\n| Text-rich VQA(0.4K) | WebQA | Webpage | 0.1K |\n|  | TQA | Textbook | 0.1K |\n|  | OCR-VQA | OCR | 0.1K |\n|  | DocVQA | Document | 0.1K |\n| Multi-image VQA(0.4K) | MIT-States\\_StateCoherence | General | 0.1K |\n|  | MIT-States\\_PropertyCoherence | General | 0.1K |\n|  | RecipeQA\\_ImageCoherence | Recipe | 0.1K |\n|  | VISION | Industrial | 0.1K |\n| Puzzle (1.4K) | Raven | Abstract | 1.4K |\n| In-domain Evaluation - Existing Benchmarks |  |  |  |\n| NLVR2 (7K) | NLVR2 | Realistic | 7K |\n| Q-Bench (1K) | Q-Bench | Low-level | 1K |\n| Out-domain Evaluation - Newly Curated Benchmarks |  |  |  |\n| MathVerse-mv (0.8K) | MathVerse (Vision Dominant) | Math Diagram | 0.8K |\n| SciVerse-mv (0.4K) | SciVerse (Vision Dominant) | Scientific Diagram | 0.4K |\n| Out-domain Evaluation - Existing Benchmarks |  |  |  |\n| Mantis-Eval (0.2K) | Mantis-Eval | General | 0.2K |\n| BLINK (1.9K) | BLINK | General | 1.9k |\n| MMMU-mv (test) (0.8K) | MMMU | Scientific Diagram | 0.8K |\n\nTable 16: LLaVA-Interleave Bench detailed datasets.\n\n[◄](https://ar5iv.org/html/2407.07894) [![ar5iv homepage](https://ar5iv.org/assets/ar5iv.png)](https://ar5iv.org/) [Feeling\\\\\n\\\\\nlucky?](https://ar5iv.org/feeling_lucky) [Conversion\\\\\n\\\\\nreport](https://ar5iv.org/log/2407.07895) [Report\\\\\n\\\\\nan issue](https://github.com/dginev/ar5iv/issues/new?template=improve-article--arxiv-id-.md&title=Improve+article+2407.07895) [View original\\\\\n\\\\\non arXiv](https://arxiv.org/abs/2407.07895) [►](https://ar5iv.org/html/2407.07896)",
+  "sections": {
+    "1 Introduction": {
+      "content": "Recent advancements in Large Multimodal Models (LMMs) \\[ [37], [26], [43], [12], [64], [11], [66]\\]\nhave showcased impressive capabilities in diverse multimodal contexts, advancing the pursuit of artificial general intelligence. With extensive vision-language data \\[ [46], [47]\\], they empower Large Language Models (LLMs) \\[ [52], [53], [8], [5]\\] with visual modality by aligning vision encoders \\[ [44], [9], [45]\\]. This integration has propelled forward the field of AI, enabling complex image and language understanding tasks to be performed with unprecedented accuracy.\n\n![Refer to caption]Figure 1: Tasks in our M4-Instruct. (a) showcases an example of interleaved multi-image scenarios (visual story telling). (b), (c), and (d) indicate that video, 3D and single-image data can also be organized as the interleaved data format for unified processing.\n\nHowever, most open-source LMMs \\[ [24], [11], [34], [36]\\] have primarily focused on pushing the performance limit of the single-image scenario, the more complex multi-image scenarios remain largely less explored. This oversight is significant given that many real-world applications demand multi-image capabilities, such as comprehensive multi-image analyses. Traditionally, researchers have approached these challenges by training separate task-specific models for each application scenario, e.g., multi-image \\[ [19], [27], [1]\\], video \\[ [7], [29], [67]\\], and 3D \\[ [14], [58], [15]\\]. This is both labor-intensive and time-consuming, resulting in fragmented methodologies that are inefficient and often unscalable.\nConsidering the diverse range of computer vision settings and data formats, there is a pressing need to develop a general framework for LMMs that can operate effectively across these varied contexts.\n\nIn this paper, we observe that the image-text interleaved format can naturally serve as a general data template to unify different scenarios, e.g., single-image or multi-image as special cases, video as multi-frames, and 3D as multi-views, as illustrated in Figure [1]Figure 1 ‣ 1 Introduction ‣ LLaVA-NeXT-Interleave: Tackling Multi-image, Video, and 3D in Large Multimodal Models\"). Therefore, we present LLaVA-NeXT-Interleave, an all-around LMM that extends the model capabilities to various real-world settings such as Multi-image, Multi-frame (videos), Multi-view (3D) while maintains the performance of the Multi-patch (single-image) performance. We denote the four settings as M4.\n\nThe core innovation of our approach lies in the perspective to leverage an image-text interleaved format as a universal data template capable of accommodating different scenarios, and construct the related visual instruction-following data. This perspective not only simplifies the training process across various domains, but also allow the model to emerge new capabilities due to cross-domain task composition.\n\nOur contributions are summarized as below:\n\n- •\n\n\nInterleave data format unifies different tasks. We convert multi-image, video, 3D, and single-image data all into an interleaved training format, which unifies different tasks in a single LMM.\n\n- •\n\n\nNew dataset and benchmark. We compile a high-quality training dataset, M4-Instruct, with 1177.6 samples to empower LMMs with the M4 capabilities, which spans 4 primary domains (multi-image, video, 3D, and single-image) with 14 tasks and 41 datasets. We also curate LLaVA-Interleave Bench, a diverse set of benchmarks to evaluate the multi-image performance, including 7 newly collected and 13 existing in/out-domain benchmarks.\n\n- •\n\n\nSoTA performance. With a single model, LLaVA-NeXT-Interleave can achieve leading results across different multi-image tasks compared to the previous SoTA, while maintaining the single-image performance, as exemplified in Figure LLaVA-NeXT-Interleave: Tackling Multi-image, Video, and 3Din Large Multimodal Models.\n\n- •\n\n\nEmerging capabilities with cross-task transfer. By jointly training on a diverse set of tasks, our model showcases emerging capabilities to transfer tasks across different settings and modalities. e.g., from spotting differences between images to videos.",
+      "citations": [
+        {
+          "start_pos": 57,
+          "end_pos": 61,
+          "text": "[37]",
+          "paper_id": "bib.bib37",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 63,
+          "end_pos": 67,
+          "text": "[26]",
+          "paper_id": "bib.bib26",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 69,
+          "end_pos": 73,
+          "text": "[43]",
+          "paper_id": "bib.bib43",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 75,
+          "end_pos": 79,
+          "text": "[12]",
+          "paper_id": "bib.bib12",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 81,
+          "end_pos": 85,
+          "text": "[64]",
+          "paper_id": "bib.bib64",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 87,
+          "end_pos": 91,
+          "text": "[11]",
+          "paper_id": "bib.bib11",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 93,
+          "end_pos": 97,
+          "text": "[66]",
+          "paper_id": "bib.bib66",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 268,
+          "end_pos": 272,
+          "text": "[46]",
+          "paper_id": "bib.bib46",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 274,
+          "end_pos": 278,
+          "text": "[47]",
+          "paper_id": "bib.bib47",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 327,
+          "end_pos": 331,
+          "text": "[52]",
+          "paper_id": "bib.bib52",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 333,
+          "end_pos": 337,
+          "text": "[53]",
+          "paper_id": "bib.bib53",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 339,
+          "end_pos": 342,
+          "text": "[8]",
+          "paper_id": "bib.bib8",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 344,
+          "end_pos": 347,
+          "text": "[5]",
+          "paper_id": "bib.bib5",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 402,
+          "end_pos": 406,
+          "text": "[44]",
+          "paper_id": "bib.bib44",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 408,
+          "end_pos": 411,
+          "text": "[9]",
+          "paper_id": "bib.bib9",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 413,
+          "end_pos": 417,
+          "text": "[45]",
+          "paper_id": "bib.bib45",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 896,
+          "end_pos": 900,
+          "text": "[24]",
+          "paper_id": "bib.bib24",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 902,
+          "end_pos": 906,
+          "text": "[11]",
+          "paper_id": "bib.bib11",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 908,
+          "end_pos": 912,
+          "text": "[34]",
+          "paper_id": "bib.bib34",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 914,
+          "end_pos": 918,
+          "text": "[36]",
+          "paper_id": "bib.bib36",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1377,
+          "end_pos": 1381,
+          "text": "[19]",
+          "paper_id": "bib.bib19",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1383,
+          "end_pos": 1387,
+          "text": "[27]",
+          "paper_id": "bib.bib27",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1389,
+          "end_pos": 1392,
+          "text": "[1]",
+          "paper_id": "bib.bib1",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1405,
+          "end_pos": 1408,
+          "text": "[7]",
+          "paper_id": "bib.bib7",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1410,
+          "end_pos": 1414,
+          "text": "[29]",
+          "paper_id": "bib.bib29",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1416,
+          "end_pos": 1420,
+          "text": "[67]",
+          "paper_id": "bib.bib67",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1434,
+          "end_pos": 1438,
+          "text": "[14]",
+          "paper_id": "bib.bib14",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1440,
+          "end_pos": 1444,
+          "text": "[58]",
+          "paper_id": "bib.bib58",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1446,
+          "end_pos": 1450,
+          "text": "[15]",
+          "paper_id": "bib.bib15",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        }
+      ]
+    },
+    "2 Related Work": {
+      "content": "#### Interleaved Image-text Training Data.\n\nAs a more general format, interleaved image-text data can enable LMMs with two distinctive capabilities: multimodal in-context learning (ICL) capability and instruction-following capability in real-world multi-image application scenarios.\nThe former in-context scenarios interleave several image-text examples within the prompt as task demonstrations, adapting LMMs to new tasks in the inference stage in a few-shot manner. Flamingo \\[ [1]\\] is first model to demonstrate this capability, and thus is considered as GPT-3 moment for multimodal community. Typically, the multimodal ICL ability is emerged after pre-training on web-scale raw interleaved image-text sequences. In the open-source community, MMC4 \\[ [68]\\] introduces a public 101.2M interleaved dataset spanning everyday topics, OBELICS \\[ [22]\\] also presents a filtered dataset comprising 141M interleaved web pages. Kosmos-1 \\[ [18]\\] curates a 71M multimodal corpora, including arbitrarily interleaved documents. To explicitly enable the ICL capability, MIMIC-IT \\[ [25]\\] proposes an automatic pipeline to create 2.8M multimodal samples in the instruction-tuning stage.\nOn the other hand, the latter multi-image scenarios aim to tackle diverse real-world applications scenarios that involve multi-images.\nThe training data of VPG-C \\[ [27]\\] collected 4 new datasets with ChatGPT.\nMantis-Instruct \\[ [19]\\] compiles existing 11 interleaved datasets and creates 4 new datasets.\nThe proposed M4-Instruct  \\[ [19]\\] compiles existing 41 interleaved datasets and creates 6 new datasets, covering a much higher scenarios diversity than Mantis-Instruct.\n\n#### Interleaved LMMs.\n\nAs representative closed-source LMMs, both GPT-4V \\[ [42]\\] and Gemini \\[ [12]\\] support real-world multi-image application scenarios with leading performance.\nWith various public datasets aforementioned, the community has developed open-source LMMs equipped with remarkable multi-image proficiency. The ICL performance is typically considered to evaluate multimodal pre-training, which has been adopted in several known LMMs, such as OpenFlamingo \\[ [2]\\], IDEFICS series \\[ [22], [23]\\], VILA \\[ [33]\\] and MM1 \\[ [41]\\], Emu2 \\[ [51]\\]. Otter \\[ [25]\\] is initialized from OpenFlamingo, and is fine-tuned on the MIMIC-IT dataset to further improve ICL ability with instruction-tuning.\nIn contrast, the use of instruction-tuning in LMMs for various real-world multi-image applications has been less explored, despite of Mantis \\[ [19]\\].\nThe proposed LLaVA-NeXT-Interleave not only broadens the multi-image scenario itself as demonstrated by the improved experimental results, but also generalize the settings to diverse scenarios with one model, e.g., video, 3D, and single-image. The cross-scenario training leads to emerging capabilities, achieving zero-shot task composition in new multi-image contexts.\n\n![Refer to caption]Figure 2: Task examples of M4-Instruct, containing diverse scenarios in multi-image, multi-frame (video), and multi-view (3D).\n\n#### Interleaved Benchmarks.\n\nTo assess the interleaved multi-image capabilities of LMMs, there have been several high-quality benchmarks in various scenarios. The ICL benchmarks \\[ [20], [49]\\] for LMMs comprehensively evaluate their interleaved skills from few-shot to many-shot settings. For the more challenging multi-image scenarios, previous works mainly focus on a specific domain for evaluation, including NLVR2 \\[ [50]\\] for daily-life VQA, MMMU \\[ [61]\\] for colleague-level problem-solving, MathVerse-mv \\[ [65]\\] and SciVerse-mv \\[ [13]\\] for mathematical and scientific reasoning, BLINK \\[ [10]\\] to challenge LMMs, and Mantis-Eval \\[ [19]\\] for multi-image understanding.\nTo further evaluate LMMs on a collection of multi-image scenarios, DEMON \\[ [27]\\] is the first benchmark that compiles dozens of datasets with 477K samples. With the large amount of data and high diversity, DEMON lays a good foundation for multi-image research. Unfortunately, it also inherits a significant amount of low-quality data samples from existing datasets. To facilitate evaluation, the proposed LLaVA-Interleave Bench curate high-quality samples, comprising both specific (synthetic, mathematical, low-level) and general (daily, real-world, text-rich) multi-image scenarios. With 9 newly curated and 13 existing datasets, we categorize them into in-domain (12.9K) and out-domain (4.1K) schemes.\nCon-current multi-image evaluation benchmarks include MuirBench \\[ [54]\\] and ReMI \\[ [21]\\].",
+      "citations": [
+        {
+          "start_pos": 480,
+          "end_pos": 483,
+          "text": "[1]",
+          "paper_id": "bib.bib1",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 755,
+          "end_pos": 759,
+          "text": "[68]",
+          "paper_id": "bib.bib68",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 846,
+          "end_pos": 850,
+          "text": "[22]",
+          "paper_id": "bib.bib22",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 937,
+          "end_pos": 941,
+          "text": "[18]",
+          "paper_id": "bib.bib18",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1076,
+          "end_pos": 1080,
+          "text": "[25]",
+          "paper_id": "bib.bib25",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1346,
+          "end_pos": 1350,
+          "text": "[27]",
+          "paper_id": "bib.bib27",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1411,
+          "end_pos": 1415,
+          "text": "[19]",
+          "paper_id": "bib.bib19",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1517,
+          "end_pos": 1521,
+          "text": "[19]",
+          "paper_id": "bib.bib19",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1737,
+          "end_pos": 1741,
+          "text": "[42]",
+          "paper_id": "bib.bib42",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1758,
+          "end_pos": 1762,
+          "text": "[12]",
+          "paper_id": "bib.bib12",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 2135,
+          "end_pos": 2138,
+          "text": "[2]",
+          "paper_id": "bib.bib2",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 2160,
+          "end_pos": 2164,
+          "text": "[22]",
+          "paper_id": "bib.bib22",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 2166,
+          "end_pos": 2170,
+          "text": "[23]",
+          "paper_id": "bib.bib23",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 2182,
+          "end_pos": 2186,
+          "text": "[33]",
+          "paper_id": "bib.bib33",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 2200,
+          "end_pos": 2204,
+          "text": "[41]",
+          "paper_id": "bib.bib41",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 2216,
+          "end_pos": 2220,
+          "text": "[51]",
+          "paper_id": "bib.bib51",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 2233,
+          "end_pos": 2237,
+          "text": "[25]",
+          "paper_id": "bib.bib25",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 2516,
+          "end_pos": 2520,
+          "text": "[19]",
+          "paper_id": "bib.bib19",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 3224,
+          "end_pos": 3228,
+          "text": "[20]",
+          "paper_id": "bib.bib20",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 3230,
+          "end_pos": 3234,
+          "text": "[49]",
+          "paper_id": "bib.bib49",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 3465,
+          "end_pos": 3469,
+          "text": "[50]",
+          "paper_id": "bib.bib50",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 3500,
+          "end_pos": 3504,
+          "text": "[61]",
+          "paper_id": "bib.bib61",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 3560,
+          "end_pos": 3564,
+          "text": "[65]",
+          "paper_id": "bib.bib65",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 3586,
+          "end_pos": 3590,
+          "text": "[13]",
+          "paper_id": "bib.bib13",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 3645,
+          "end_pos": 3649,
+          "text": "[10]",
+          "paper_id": "bib.bib10",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 3690,
+          "end_pos": 3694,
+          "text": "[19]",
+          "paper_id": "bib.bib19",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 3804,
+          "end_pos": 3808,
+          "text": "[27]",
+          "paper_id": "bib.bib27",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 4502,
+          "end_pos": 4506,
+          "text": "[54]",
+          "paper_id": "bib.bib54",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 4521,
+          "end_pos": 4525,
+          "text": "[21]",
+          "paper_id": "bib.bib21",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        }
+      ]
+    },
+    "3 Interleaved Multi-image Tasks & Data": {
+      "content": "### 3.1 Task Overview\n\n![Refer to caption]\n\nFigure 3: M4-Instruct training data statistics.![Refer to caption]\n\nFigure 4: LLaVA-Interleave Bench statistics.\n\nWe observe different computer vision scenarios can be generally represented by the interleaved multi-image format, such as video, 3D, and single-image data. Therefore, to endow LLaVA-Interleave with diverse capabilities, as shown in Figure [1]Figure 1 ‣ 1 Introduction ‣ LLaVA-NeXT-Interleave: Tackling Multi-image, Video, and 3D in Large Multimodal Models\"), we adopt the interleaved multi-image format to unify the data input of the following four tasks:\n\nMulti-image scenarios include visual instructions incorporating interleaved vision-language input with multiple images. This setting covers 12 challenging real-world tasks included in our training data, such as spotting the difference, visual story telling, image editing instruction generation, interleaved multi-image dialogue, multi-image puzzle, low-level multi-image assessment, etc.\n\nMulti-frame scenarios refer to taking video as input data by sampling it into multiple frames, preserving temporal visual cues across the multi-image sequence. We mainly focus on 2 tasks: video detailed captioning and video VQA.\n\nMulti-view scenarios depict 3D environments by multi-view images from different perspectives, where the visual correspondence and disparity can indicate spatial information in the 3D world. For 3D perception, we include 2 tasks: embodied VQA (dialogue and planning), and 3D scene VQA (captioning and grounding).\n\nMulti-patch scenarios represent the conventional single-image tasks. With the design of ‘any resolution’ in LLaVA-NeXT \\[ [36]\\], we divide a high-resolution image into multiple low-resolution patches for efficient visual encoding, compatible with our interleaved multi-image format.\n\n### 3.2 M4-Instruct\n\nTo empower all-round multi-image capabilities, we meticulously curate a comprehensive training dataset including 1177.6K instances, termed M4-Instruct, widely spanning multi-image, multi-frame, and multi-view scenarios with 14 tasks and 41 datasets, along with multi-patch data to preserve basic single-image performance. We showcase task examples of the first three scenarios in Figure [2]Figure 2 ‣ Interleaved LMMs. ‣ 2 Related Work ‣ LLaVA-NeXT-Interleave: Tackling Multi-image, Video, and 3D in Large Multimodal Models\").\n\nWe exhibit a data overview of M4-Instruct in Figure [3]Figure 3 ‣ 3.1 Task Overview ‣ 3 Interleaved Multi-image Tasks & Data ‣ LLaVA-NeXT-Interleave: Tackling Multi-image, Video, and 3D in Large Multimodal Models\"), and the detailed data statistics in Table [15]Table 15 ‣ B.2 Impact of video DPO training on other tasks. ‣ Appendix B Ablation Study ‣ LLaVA-NeXT-Interleave: Tackling Multi-image, Video, and 3D in Large Multimodal Models\").\nFor the multi-image data, most of the datasets are collected from previous public efforts and rigorously converted into our unified format with task-specific instructions, some inspired by DEMON \\[ [27]\\] and Mantis \\[ [19]\\]. On top of that, we also utilize GPT-4V \\[ [43]\\] to annotate 3 new tasks to enable more diverse capabilities, i.e., Real-world Difference, Synthetic Difference, and Twitter Post. For the video data, we collect a 255K subset from LLaVA-Hound \\[ [63]\\], including 240K video VQA and 15K video detailed captioning. We also include NExT-QA \\[ [57]\\] and STAR \\[ [55]\\] to expand our video training data. For the 3D data, we widely gather the training set from nuScenes QA \\[ [6]\\], ALFRED \\[ [48]\\], ScanQA \\[ [3]\\], and 3D-LLM \\[ [16]\\], covering both outdoor and indoor scenarios. For the single-image data, we randomly sample 40% of the stage-2 fine-tuning data from LLaVA-NeXT \\[ [24]\\], which aims to preserve the single-image capacity.\n\n|     |     |     |     |     |     |     |     |     |     |     |     |     |     |     |     |\n| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n| Model | In-domain Evaluation | Out-domain Evaluation |\n| Avg | SD | IE | VST | TRVQA | MIVQA | Puzzle | QB | NLVR2 | Avg | Math | Sci | Mantis | BLINK | MMMU-mv |\n| GPT-4V \\[ [43]\\] | 39.2 | 12.5 | 11.0 | 10.9 | 54.5 | 52.0 | 17.1 | 76.5 | 88.8 | 57.8 | 60.3 | 66.9 | 62.7 | 51.1 | 47.9 |\n| LLaVA-NeXT-Image (7B) \\[ [36]\\] | 32.4 | 12.9 | 13.2 | 10.1 | 59.6 | 39.4 | 9.0 | 51.0 | 68.0 | 29.4 | 13.5 | 12.2 | 46.1 | 41.8 | 33.5 |\n| VPG-C (7B) \\[ [28]\\] | 35.8 | 27.8 | 15.2 | 21.5 | 38.9 | 46.8 | 2.4 | 57.6 | 73.2 | 34.5 | 24.3 | 23.1 | 52.4 | 43.1 | 29.4 |\n| Mantis (7B) \\[ [19]\\] | 39.6 | 17.6 | 11.2 | 12.5 | 45.2 | 52.5 | 25.7 | 69.9 | 87.4 | 39.3 | 27.2 | 29.3 | 59.5 | 46.4 | 34.1 |\n| LLaVA-NeXT-Interleave |\n| 0.5B | 43.9 | 34.3 | 21.6 | 29.7 | 63.9 | 54.8 | 35.4 | 52.0 | 67.8 | 33.1 | 13.3 | 12.2 | 45.6 | 39.2 | 28.6 |\n| 7B | 58.6 | 37.1 | 24.3 | 33.1 | 76.1 | 87.5 | 48.7 | 74.2 | 88.8 | 42.8 | 32.8 | 31.6 | 62.7 | 52.6 | 34.5 |\n| 14B | 62.3 | 40.5 | 24.5 | 33.3 | 78.6 | 95.0 | 59.9 | 76.7 | 91.1 | 44.3 | 33.4 | 32.7 | 66.4 | 52.1 | 37.1 |\n\nTable 1: Results on our LLaVA-Interleave Bench. SD: Spot the Difference, IE: Image Edit Instruction, VST: Visual Story Telling, TRVQA: Text-rich VQA, MIVQA: Multi-image VQA, QB: Q-Bench, SQ: ScanQA, Math: MathVerse-mv, Sci: SciVerse-mv.\n\nTo comprehensively evaluate the interleaved multi-image performance, we introduce the LLaVA-Interleave Bench for LMMs, consisting of 13 challenging tasks with 17K instances. We present a data overview of the benchmark in Figure [2]Figure 2 ‣ Interleaved LMMs. ‣ 2 Related Work ‣ LLaVA-NeXT-Interleave: Tackling Multi-image, Video, and 3D in Large Multimodal Models\"), and the detailed data statistics in Table [16]Table 16 ‣ B.2 Impact of video DPO training on other tasks. ‣ Appendix B Ablation Study ‣ LLaVA-NeXT-Interleave: Tackling Multi-image, Video, and 3D in Large Multimodal Models\").\nIn detail, we categorize multi-image tasks into two classes:\n\n- •\n\n\nIn-domain Evaluation includes tasks that have been ‘seen’ during our training, designed to verify the model performance within familiar scenarios. We adopt 5 newly curated multi-image tasks corresponding to training datasets, and 2 existing benchmarks, Q-Bench \\[ [56]\\] and NLVR2 \\[ [50]\\], with 12.9K in total.\n\n- •\n\n\nOut-domain Evaluation involves tasks that don’t overlap with training scenarios, aiming to reveal the generalization capacity of LMMs. We construct 2 new tasks for multi-image mathematical (MathVerse \\[ [65]\\]) and scientific (SciVerse \\[ [13]\\]) comprehension, and utilize 3 existing benchmarks, Mantis-Eval \\[ [19]\\], BLINK \\[ [10]\\], and MMMU \\[ [60]\\], with 4.1K in total.",
+      "citations": [
+        {
+          "start_pos": 1671,
+          "end_pos": 1675,
+          "text": "[36]",
+          "paper_id": "bib.bib36",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 3022,
+          "end_pos": 3026,
+          "text": "[27]",
+          "paper_id": "bib.bib27",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 3043,
+          "end_pos": 3047,
+          "text": "[19]",
+          "paper_id": "bib.bib19",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 3093,
+          "end_pos": 3097,
+          "text": "[43]",
+          "paper_id": "bib.bib43",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 3295,
+          "end_pos": 3299,
+          "text": "[63]",
+          "paper_id": "bib.bib63",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 3390,
+          "end_pos": 3394,
+          "text": "[57]",
+          "paper_id": "bib.bib57",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 3409,
+          "end_pos": 3413,
+          "text": "[55]",
+          "paper_id": "bib.bib55",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 3522,
+          "end_pos": 3525,
+          "text": "[6]",
+          "paper_id": "bib.bib6",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 3539,
+          "end_pos": 3543,
+          "text": "[48]",
+          "paper_id": "bib.bib48",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 3557,
+          "end_pos": 3560,
+          "text": "[3]",
+          "paper_id": "bib.bib3",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 3578,
+          "end_pos": 3582,
+          "text": "[16]",
+          "paper_id": "bib.bib16",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 3731,
+          "end_pos": 3735,
+          "text": "[24]",
+          "paper_id": "bib.bib24",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 4163,
+          "end_pos": 4167,
+          "text": "[43]",
+          "paper_id": "bib.bib43",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 4304,
+          "end_pos": 4308,
+          "text": "[36]",
+          "paper_id": "bib.bib36",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 4433,
+          "end_pos": 4437,
+          "text": "[28]",
+          "paper_id": "bib.bib28",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 4563,
+          "end_pos": 4567,
+          "text": "[19]",
+          "paper_id": "bib.bib19",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 6206,
+          "end_pos": 6210,
+          "text": "[56]",
+          "paper_id": "bib.bib56",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 6226,
+          "end_pos": 6230,
+          "text": "[50]",
+          "paper_id": "bib.bib50",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 6465,
+          "end_pos": 6469,
+          "text": "[65]",
+          "paper_id": "bib.bib65",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 6501,
+          "end_pos": 6505,
+          "text": "[13]",
+          "paper_id": "bib.bib13",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 6574,
+          "end_pos": 6578,
+          "text": "[19]",
+          "paper_id": "bib.bib19",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 6591,
+          "end_pos": 6595,
+          "text": "[10]",
+          "paper_id": "bib.bib10",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 6611,
+          "end_pos": 6615,
+          "text": "[60]",
+          "paper_id": "bib.bib60",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        }
+      ]
+    },
+    "4 Interleaved Visual Instruction Tuning": {
+      "content": "In this section, we introduce several key techniques during the interleaved visual instruction tuning of LLaVA-NeXT-Interleave. For architecture designs, we follow LLaVA-NeXT \\[ [24]\\] to adopt the most general framework, i.e., a vision encoder \\[ [62]\\], an intermediate projector, and a powerful LLM \\[ [4]\\]. Then, we consider the following three techniques to achieve improved multi-image performance.\n\n#### Technique 1: Continue training from single-image models.\n\nThe interleaved multi-image tasks can be regarded as an extension of single-image scenarios, more flexible in formats and challenging in reasoning. Therefore, to better leverage the pre-trained single-image proficiency, we adopt an off-the-shelf LLaVA-NeXT-Image \\[ [24]\\] as the base model, which has gone through a stage-1 image-caption pre-training and a stage-2 single-image fine-tuning. On top of this model, we perform the interleaved multi-image instruction tuning with our M4-Instruct dataset.\n\n#### Technique 2: Mixed Interleaved data formats during training.\n\nWe adopt two format choices for the positions of image tokens during the interleaved multi-image training. The first is to place all the image tokens in front of the prompt, while maintaining the placeholders ⟨⟨\\\\langleimage⟩⟩\\\\rangle within the text, denoted as ‘In-the-front format’. The second preserves the interleaved format to put image tokens in the place they are originally in, i.e., the positions of ⟨⟨\\\\langleimage⟩⟩\\\\rangle, denoted as ‘interleaved format’. In this way, LLaVA-NeXT-Interleave supports more flexible inference modes, exhibiting robustness to different input formats.\n\n#### Technique 3: Combining different data scenarios improves individual task performance.\n\nMost existing works conduct supervised fine-tuning with only one type of data source, e.g., multi-image tuning of Mantis \\[ [19]\\] and multi-frame tuning of LLaMA-VID \\[ [31]\\]. Instead, we utilize the M4-Instruct to simultaneously conduct instruction tuning with four different tasks (multi-image/frame/view/patch). With a unified interleaved format, distinct data scenarios have the potential to provide complementary semantics and instruction-following capabilities.",
+      "citations": [
+        {
+          "start_pos": 178,
+          "end_pos": 182,
+          "text": "[24]",
+          "paper_id": "bib.bib24",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 248,
+          "end_pos": 252,
+          "text": "[62]",
+          "paper_id": "bib.bib62",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 305,
+          "end_pos": 308,
+          "text": "[4]",
+          "paper_id": "bib.bib4",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 736,
+          "end_pos": 740,
+          "text": "[24]",
+          "paper_id": "bib.bib24",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1852,
+          "end_pos": 1856,
+          "text": "[19]",
+          "paper_id": "bib.bib19",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1898,
+          "end_pos": 1902,
+          "text": "[31]",
+          "paper_id": "bib.bib31",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        }
+      ]
+    },
+    "5 Experiments": {
+      "content": "In Section [5.1]Settings ‣ 5 Experiments ‣ LLaVA-NeXT-Interleave: Tackling Multi-image, Video, and 3D in Large Multimodal Models\"), we first introduce our evaluation schemes and implementation details. Then, in Section [5.2]Main Results ‣ 5 Experiments ‣ LLaVA-NeXT-Interleave: Tackling Multi-image, Video, and 3D in Large Multimodal Models\"), we report and analyze the quantitative results in four interleaved multi-image scenarios.\n\n|     |     |     |     |     |     |     |     |     |     |\n| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n| Model | NExTQA | MVBench | ActivityNet-QA | VDD | |     |\n| --- |\n| VideoChat-GPT | |\n| CI | DO | CU | TU | CO |\n| GPT-4V \\[ [43]\\] | - | - | - | 4.00 | 4.09 | 3.88 | 4.37 | 3.94 | 4.02 |\n| VideoChatGPT (7B) \\[ [39]\\] | - | - | 35.2/2.70 | - | 2.40 | 2.52 | 2.62 | 1.98 | 2.37 |\n| Video-LLaVA (7B) \\[ [32]\\] | - | - | 45.3/3.30 | - | 2.87 | 2.94 | 3.44 | 2.45 | 2.51 |\n| VISTA-LLaMA (7B) \\[ [38]\\] | - | - | 48.3/3.30 | - | 2.44 | 2.31 | 2.64 | 3.18 | 2.26 |\n| VideoChat2 (7B) \\[ [29]\\] | 68.6 | 51.9 | 49.1/3.30 | - | 3.02 | 2.88 | 3.51 | 2.66 | 2.81 |\n| LLaMA-VID (7B) \\[ [31]\\] | - | 50.2 | 47.4/3.30 | 2.84 | 3.01 | 2.97 | 3.54 | 2.53 | 2.60 |\n| LLaVA-NeXT-Video (7B) \\[ [67]\\] | - | - | 53.5/3.20 | 3.32 | 3.39 | 3.29 | 3.92 | 2.60 | 3.12 |\n| LLaVA-NeXT-Video-DPO (7B) | - | - | 60.2/3.50 | 3.72 | 3.64 | 3.45 | 4.17 | 2.95 | 4.08 |\n| LLaVA-NeXT-Video-DPO (34B) | - | - | 64.4/3.60 | 3.84 | 3.81 | 3.55 | 4.24 | 3.14 | 4.12 |\n| LLaVA-NeXT-Interleave |\n| 0.5B | 59.5 | 45.6 | 48.0/2.84 | 3.25 | 3.12 | 2.97 | 3.62 | 2.36 | 3.27 |\n| 7B | 78.2 | 53.1 | 55.3/3.13 | 3.57 | 3.51 | 3.28 | 3.89 | 2.77 | 3.68 |\n| 14B | 79.1 | 54.9 | 56.2/3.19 | 3.59 | 3.65 | 3.37 | 3.98 | 2.74 | 3.67 |\n| 7B (DPO) | 77.9 | 52.3 | 55.0/3.13 | 3.90 | 3.99 | 3.61 | 4.24 | 3.19 | 4.12 |\n\nTable 2: Results on multi-frame (video) benchmarks. VDD: Video Detailed Description. CI (Correctness of Information), DO (Detail Orientation), CU (Context Understanding), TU (Temporal Understanding), and CO (Consistency).\n\n### 5.1 Settings\n\n#### Evaluation Schemes.\n\nWe evaluate our LLaVA-NeXT-Interleave model on four real-world interleaved scenarios, i.e., multi-image, multi-frame (video), multi-view (3D), and multi-patch (single-image).\n\n- •\n\n\nFor multi-image evaluation, we adopt the proposed LLaVA-Interleave Bench covering comprehensive in-domain and out-domain tasks.\n\n- •\n\n\nFor video evaluation, we utilize the existing NExT-QA \\[ [57]\\], MVBench \\[ [30]\\], Video Detailed Description (VDD) \\[ [67]\\], and ActivityNet-QA (Act) \\[ [59]\\]. For ActivityNet-QA, we present both the accuracy and GPT score (Acc/Score). We also evaluate on VideoChat-GPT (VCG) \\[ [40]\\] with five metrics: CI (Correctness of Information), DO (Detail Orientation), CU (Context Understanding), TU (Temporal Understanding), and CO (Consistency).\n\n- •\n\n\nFor 3D evaluation, we select ScanQA \\[ [3]\\], two tasks from 3D-LLM \\[ [16]\\], i.e., 3D-assisted Dialogue and Task Decomposition, and also curate two new test set from nuScenes VQA \\[ [6]\\] and ALFRED \\[ [48]\\].\n\n\n#### Implementation Details.\n\nFollowing the same architecture in LLaVA-NeXT \\[ [24]\\], our LLaVA-NeXT-Interleave adopts Qwen 1.5 \\[ [5]\\] as the base LLM with 0.5B, 7B and 14B parameters, SigLIP-400M \\[ [62]\\] with 384×\\\\times384 resolutions as the vision encoder, and a two-layer MLP as the projection layer.\n\n|     |     |     |     |     |     |     |\n| --- | --- | --- | --- | --- | --- | --- |\n| Model | In-domain Evaluation |\n| Avg | 3D-assisted | Task | ScanQA | ALFRED | nuScenes |\n| Dialogue | Decomposition | (val) |  | VQA |\n| Flamingo \\[ [1]\\] | 20.5 | 27.9 | 33.2 | 31.1 | 5.3 | 4.9 |\n| GPT-4V \\[ [43]\\] | 34.6 | 31.2 | 35.4 | 32.6 | 10.3 | 63.7 |\n| Point-Bind & LLM \\[ [14]\\] | 22.5 | 38.3 | 35.8 | 34.6 | 0.6 | 3.3 |\n| 3D-LLM \\[ [17]\\] | 22.9 | 39.3 | 37.8 | 35.7 | 1.4 | 0.4 |\n| Mantis (7B) \\[ [19]\\] | 18.7 | 2.60 | 14.7 | 16.1 | 14.0 | 46.2 |\n| LLaVA-NeXT-Interleave |\n| 0.5B | 53.0 | 67.2 | 48.5 | 29.3 | 57.0 | 62.8 |\n| 7B | 58.2 | 69.3 | 51.4 | 32.2 | 61.6 | 76.5 |\n| 14B | 59.2 | 70.6 | 52.2 | 34.5 | 62.0 | 76.7 |\n\nTable 3: Results on 3D benchmarks. 3D-assisted Dialogue and Task Decomposition are evaluation tasks from 3D-LLM.\n\n|     |     |     |     |     |     |     |     |     |\n| --- | --- | --- | --- | --- | --- | --- | --- | --- |\n| Model | LLM | Avg | ​AI2D | ​​ChartQA | ​DocVQA | MME | SciQA | POPE |\n| Single | 0.5B | 59.8 | 51.7 | 50.2 | 59.1 | 52.8 | 60.0 | 85.4 |\n| Interleave | 60.5 | 52.2 | 52.2 | 59.2 | 52.0 | 60.6 | 86.8 |\n| Single | 7B | 72.3 | 72.7 | 66.3 | 75.6 | 61.0 | 71.1 | 86.9 |\n| Interleave | 73.3 | 73.9 | 67.2 | 75.7 | 63.5 | 72.6 | 86.8 |\n| Single | 14B | 77.2 | 77.5 | 72.1 | 80.0 | 67.7 | 78.9 | 87.3 |\n| Interleave | 76.4 | 76.5 | 71.2 | 78.9 | 66.2 | 77.4 | 87.9 |\n\nTable 4: Results on multi-patch (single-image) benchmarks with different LLM sizes. ‘Single’ and ‘Interleave’ denote LLaVA-NeXT-Image and our model, respectively.\n\n|     |     |     |     |     |     |     |     |     |     |     |     |     |     |     |\n| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n| Continue training | Multi-image | Multi-frame | Multi-view | Single-image |\n| Mantis | BLINK | QB | NLVR2 | Act | MVB | VDD | ScanQA | AI2D | ChartQA | DocVQA | MME\\* | POPE | SQA |\n| From stage-1 pre-training | 41.0 | 37.6 | 47.0 | 54.0 | 44.7/2.17 | 43.0 | 2.96 | 27.7 | 46.3 | 38.3 | 47.5 | 47.1 | 85.4 | 59.4 |\n| From single-image models | 45.6 | 39.2 | 52.0 | 67.8 | 48.0/2.84 | 45.6 | 3.25 | 29.3 | 52.2 | 52.2 | 59.2 | 52.0 | 86.8 | 60.6 |\n\nTable 5: Ablation on whether to continue training from single-image models. QB: Q-Bench, Act: ActivityNet-QA, MVB: MVBench, VDD: Video Detailed Description, MME\\*: Throughout our paper, we convert MME’s score to accuracy by summing up the perception and cognition scores and dividing 2800, SQA: Scienceqa-IMG.\n\nTrainingSettingInferenceSettingAvgSpot theDifferenceVisual StoryTellingText-richVQAQ-BenchIn-the-frontInterleaved52.936.830.570.174.0In-the-front54.336.632.874.775.3InterleavedInterleaved55.437.832.976.276.0In-the-front52.436.129.072.971.8MixedInterleaved57.038.332.578.176.9In-the-front56.637.932.578.476.3\n\nTable 6: Ablation on mixed interleaved data formats. We select several tasks within LLaVA-Interleave Bench for ablation.\n\nDataNExT-QAVDDVideoChatGPTCIDOCUTUCOVideo42.63.463.473.273.872.743.61Video + Single-image67.73.493.463.303.852.713.60Video + Multi-image77.73.503.503.313.902.703.63Video + Both78.23.583.503.273.872.773.68\n\nTable 7: Ablation on the improvement of combined data scenarios for video tasks. CI (Correctness of Information), DO (Detail Orientation), CU (Context Understanding), TU (Temporal Understanding), and CO (Consistency).\n\n### 5.2 Main Results\n\n#### Multi-image Results.\n\nAs reported in Table [1]Table 1 ‣ 3.2 M4-Instruct ‣ 3 Interleaved Multi-image Tasks & Data ‣ LLaVA-NeXT-Interleave: Tackling Multi-image, Video, and 3D in Large Multimodal Models\"), the average multi-image performance of LLaVA-NeXT-Interleave surpasses previous open-source models in both in- and out-domain benchmarks. For in-domain evaluation, our model demonstrates significant advantages across various tasks as expected, due to the multi-image instruction tuning with M4-Instruct. For out-domain evaluation, LLaVA-NeXT-Interleave also showcases superior generalization capacity within novel scenarios, e.g., comparable to GPT-4V on Mantis-Eval and BLINK.\n\n#### Multi-frame (Video) Results.\n\nCompared with previous video-based LMMs under similar model sizes, LLaVA-NeXT-Interleave achieves superior results on many benchmarks in Table [2]Table 2 ‣ 5 Experiments ‣ LLaVA-NeXT-Interleave: Tackling Multi-image, Video, and 3D in Large Multimodal Models\"), though not specifically designed for video tasks. We also follow LLaVA-Hound to add DPO training after our M4-Instruct tuning. After adding DPO, our 7B model attains SoTA performance on VDD and VideoChat-GPT benchmarks, surpassing the previous LLaVA-NeXT-Video (34B). This demonstrates the effective temporal understanding and reasoning capabilities of our model across sequential frames.\nNote that we calculate the average scores by multiplying a weight of 10 times by the score of Video Detailed Description and VideoChat-GPT.\n\n#### Multi-view (3D) Results.\n\nFor 3D perception in Table [3]Table 3 ‣ Implementation Details. ‣ 5.1 Settings ‣ 5 Experiments ‣ LLaVA-NeXT-Interleave: Tackling Multi-image, Video, and 3D in Large Multimodal Models\"), our model also obtains leading results for both indoor and outdoor scenarios on five in-domain benchmarks.\nCompared to 3D-LLM and Point-LLM with additional point clouds as input, LLaVA-NeXT-Interleave only accepts multi-view images to interpret the 3D world, attaining significantly higher scores in challenging 3D scenarios.\n\n#### Multi-patch (single-image) Results.\n\nWe also add 307k (40%) of original LLaVA-NeXT single-image data, which makes our model capable of doing single-image tasks. We use the anyres training for single-image data, which divides an image into multiple patches, forming another multi-image setting. As shown in Table [4]Table 4 ‣ Implementation Details. ‣ 5.1 Settings ‣ 5 Experiments ‣ LLaVA-NeXT-Interleave: Tackling Multi-image, Video, and 3D in Large Multimodal Models\"), we maintain the single-image performance of LLaVA-NeXT-Image. As single-image data is of high quality and diversity, adding single-image data also improves the instruction-following ability and enables task transfer from single-image to multi-image, which is demonstrated in Section [6]Emerging Capabilities ‣ LLaVA-NeXT-Interleave: Tackling Multi-image, Video, and 3D in Large Multimodal Models\").\n\n### 5.3 Ablations of Proposed Techniques\n\nWe study the effectiveness of the three proposed training techniques in Section [4]Interleaved Visual Instruction Tuning ‣ LLaVA-NeXT-Interleave: Tackling Multi-image, Video, and 3D in Large Multimodal Models\") as below.\n\n- •\n\n\nIn Table [5]Table 5 ‣ Implementation Details. ‣ 5.1 Settings ‣ 5 Experiments ‣ LLaVA-NeXT-Interleave: Tackling Multi-image, Video, and 3D in Large Multimodal Models\"), we compare training strategies. It is seen that initialization from a good single-image model checkpoint (from Stage-2) can consistently enhance the interleaved multi-image performance, than directly from a Stage-1 model checkpoint.\n\n- •\n\n\nIn Table [5.1]Implementation Details. ‣ 5.1 Settings ‣ 5 Experiments ‣ LLaVA-NeXT-Interleave: Tackling Multi-image, Video, and 3D in Large Multimodal Models\"), our mixed-format training can benefit the results of both two input formats.\n\n- •\n\n\nIn Table [5.1]Implementation Details. ‣ 5.1 Settings ‣ 5 Experiments ‣ LLaVA-NeXT-Interleave: Tackling Multi-image, Video, and 3D in Large Multimodal Models\"), we progressively incorporate single-image and multi-image data upon the video data. The integration of more sources contributes to enhanced performance, compared with models from individual visual scenarios.",
+      "citations": [
+        {
+          "start_pos": 686,
+          "end_pos": 690,
+          "text": "[43]",
+          "paper_id": "bib.bib43",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 772,
+          "end_pos": 776,
+          "text": "[39]",
+          "paper_id": "bib.bib39",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 862,
+          "end_pos": 866,
+          "text": "[32]",
+          "paper_id": "bib.bib32",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 952,
+          "end_pos": 956,
+          "text": "[38]",
+          "paper_id": "bib.bib38",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1041,
+          "end_pos": 1045,
+          "text": "[29]",
+          "paper_id": "bib.bib29",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1135,
+          "end_pos": 1139,
+          "text": "[31]",
+          "paper_id": "bib.bib31",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1236,
+          "end_pos": 1240,
+          "text": "[67]",
+          "paper_id": "bib.bib67",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 2469,
+          "end_pos": 2473,
+          "text": "[57]",
+          "paper_id": "bib.bib57",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 2488,
+          "end_pos": 2492,
+          "text": "[30]",
+          "paper_id": "bib.bib30",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 2532,
+          "end_pos": 2536,
+          "text": "[67]",
+          "paper_id": "bib.bib67",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 2568,
+          "end_pos": 2572,
+          "text": "[59]",
+          "paper_id": "bib.bib59",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 2695,
+          "end_pos": 2699,
+          "text": "[40]",
+          "paper_id": "bib.bib40",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 2904,
+          "end_pos": 2907,
+          "text": "[3]",
+          "paper_id": "bib.bib3",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 2936,
+          "end_pos": 2940,
+          "text": "[16]",
+          "paper_id": "bib.bib16",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 3049,
+          "end_pos": 3052,
+          "text": "[6]",
+          "paper_id": "bib.bib6",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 3069,
+          "end_pos": 3073,
+          "text": "[48]",
+          "paper_id": "bib.bib48",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 3158,
+          "end_pos": 3162,
+          "text": "[24]",
+          "paper_id": "bib.bib24",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 3211,
+          "end_pos": 3214,
+          "text": "[5]",
+          "paper_id": "bib.bib5",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 3282,
+          "end_pos": 3286,
+          "text": "[62]",
+          "paper_id": "bib.bib62",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 3629,
+          "end_pos": 3632,
+          "text": "[1]",
+          "paper_id": "bib.bib1",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 3689,
+          "end_pos": 3693,
+          "text": "[43]",
+          "paper_id": "bib.bib43",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 3762,
+          "end_pos": 3766,
+          "text": "[14]",
+          "paper_id": "bib.bib14",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 3823,
+          "end_pos": 3827,
+          "text": "[17]",
+          "paper_id": "bib.bib17",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 3889,
+          "end_pos": 3893,
+          "text": "[19]",
+          "paper_id": "bib.bib19",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        }
+      ]
+    },
+    "6 Emerging Capabilities": {
+      "content": "In this section, we show some example to demonstrate the emerging capabilities of our model. Emerging capabilities means the capabilities do not trained during training but demonstrated when inference. We mainly showcase the emerging capabilities from three aspects:\n\n1. 1.\n\n\nTask Transfer from Single-image to Multi-image:\nThe capability to reason over one image and tell the funny part is initially observed in single-image models \\[ [35]\\], and not included in our multi-image training. As shown in Table [8]Table 8 ‣ 6 Emerging Capabilities ‣ LLaVA-NeXT-Interleave: Tackling Multi-image, Video, and 3D in Large Multimodal Models\"), our model is capable of analyzing the fun part within multiple images. This new task is probably emerged by the composition of the single-image capability and multi-image VQA training.\n\n2. 2.\n\n\nTask Transfer from Image to Video: We only include the multi-image Twitter post task in the M4-Instruct training, while our model can directly perform the witter post from a video, as shown in Table [9]Table 9 ‣ 6 Emerging Capabilities ‣ LLaVA-NeXT-Interleave: Tackling Multi-image, Video, and 3D in Large Multimodal Models\"). This new task is probably composed by the training data of multi-image Twitter post and video VQA tasks.\n\n3. 3.\n\n\nReal-world Applications: In Tables [10]Table 10 ‣ 6 Emerging Capabilities ‣ LLaVA-NeXT-Interleave: Tackling Multi-image, Video, and 3D in Large Multimodal Models\"),  [11]Table 11 ‣ 6 Emerging Capabilities ‣ LLaVA-NeXT-Interleave: Tackling Multi-image, Video, and 3D in Large Multimodal Models\"), and [12]Table 12 ‣ 6 Emerging Capabilities ‣ LLaVA-NeXT-Interleave: Tackling Multi-image, Video, and 3D in Large Multimodal Models\"), we showcase three real-world scenarios that are not explicitly contained in our interleaved training data, which are multi-image painting style recognition, PPT summary & QA, and multi-doc VQA. This demonstrates our generalization potentials to a broader spectrum of applications.\n\n\nMore interesting demos can be found in our project page111 [https://llava-vl.github.io/blog/2024-06-16-llava-next-interleave/].\n\n|     |     |\n| --- | --- |\n| Task Transfer from Single-image to Multi-image |\n|  | ![[Uncaptioned image]] |\n| User | What is fun about the images? |\n| Ours | The humor in these images comes from the anthropomorphized birds engaging in human-like activities and conversations. In the first image, one bird is asking about going to get some fries on the pier, which is a human activity. The second image shows a bird asking about the ”culminating result of consciousness,” which is a philosophical question rather than a literal one. The third image has a bird expressing its desire to do something with the fries on the pier, again referencing a human activity. The anthropomorphism of the birds adds a layer of humor by attributing human thoughts and desires to animals. |\n\nTable 8: An example of emerging capability: multi-image fun part analyze.\n\n|     |     |\n| --- | --- |\n| Task Transfer from Image to Video |\n|  | ![[Uncaptioned image]] |\n| User | Help me write a twitter post to describe this video. |\n| Ours | ”Feeling the chill in the air, but the cherry blossoms are a sight to behold! Walking down the street, each person bundled up against the winter chill. The snow-covered trees and market stalls add to the serene beauty of this winter wonderland. #CherryBlossoms #WinterWalk #CityScenes”. |\n\nTable 9: An example of emerging capability: Twitter post for videos.\n\n|     |     |\n| --- | --- |\n| Real-World Applications |\n|  | ![[Uncaptioned image]] |\n| User | Do you kown who draw these paintings? |\n| Ours | Yes, these paintings are by the renowned artist Vincent van Gogh. The first painting is his famous work ”The Starry Night,” which depicts a swirling night sky with a bright crescent moon and stars. The second painting is his self-portrait, which shows him smoking a pipe and wearing a hat. The third painting is also a self-portrait, but it features a different expression and hairstyle. The fourth painting is by another artist, not Van Gogh, and depicts a person seated with flowers in the background. |\n\nTable 10: An example of emerging capability: recognizing artists’ painting styles.\n\n|     |     |\n| --- | --- |\n| Real-World Applications |\n|  | ![[Uncaptioned image]] |\n| User | The images are the PPT of iPhone 15 review. can you summarize the main information? |\n| Ours | The PPT features a sleek design with a black background and includes text and images related to the iPhone 15. It highlights the phone’s innovative features such as a custom dual glass back cover, a dynamic island display for delivery tracking, and a USB-C compatible fast charging cable. The color options are showcased in a gradient of pink, green, gray, and onyx. The presentation also emphasizes the phone’s powerful processors, including the A16 Bionic chip and A17 Pro chip. |\n| User | What is the price of iPhone 15 plus? |\n| Ours | The price of iPhone 15 plus is Rs. 89,000 as mentioned in the PPT slide. |\n| User | Why the dynamic island useful? |\n| Ours | The dynamic island is useful for delivery tracking, as it allows the user to know when their order will arrive and if there are any delays. It also provides a new way to interact with the phone’s interface, making it easier to navigate and access various features. |\n\nTable 11: An example of emerging capability: PPT summary & VQA.\n\n|     |     |\n| --- | --- |\n| Real-World Applications |\n|  | ![[Uncaptioned image]] |\n| User | Hi, there are two candidates, can you provide a brief description for each of them for me? |\n| Ours | Certainly! Here’s a brief description of each candidate: 1. Oprah Winfrey: - Professional Experience: Known for her talk show, ”The Oprah Winfrey Show,” and her work on ”COVID-19” as a presenter on Apple TV. - Skills: Emphasized on emotional intelligence, interpersonal skills, and creativity. - Honors & Awards: Notable achievements include the Golden Globe Award for Best Television Series and the Golden Globe Award for Best Television Special. 2. Steve Jobs: - Professional Experience: Co-founder of Apple Inc., where he led the development of iconic products like the iMac, iPod, and iPhone. - Skills: Highlighted as a thinker with a focus on innovation and problem-solving. - Honors & Awards: Recognized with numerous accolades, including the MacArthur Fellowship and the NeXT Computer Science Award. Please note that these descriptions are based on the information provided in the images and do not include any personal details or specific accomplishments mentioned in the images. |\n| User | Which of them better suits the role of the Congressman of the US? Why? |\n| Ours | The first resume, featuring Oprah Winfrey, would better suit the role of a Congressman because it highlights skills and experiences that are relevant to political office, such as leadership, public speaking, and media experience. These qualities are essential for a politician to effectively represent their constituents and engage in legislative processes. The second resume, while it could be suitable for a creative or entrepreneurial role, does not specifically mention skills or experiences that align with the responsibilities of a Congressman. |\n\nTable 12: An example of emerging capability: multi-doc VQA.",
+      "citations": [
+        {
+          "start_pos": 436,
+          "end_pos": 440,
+          "text": "[35]",
+          "paper_id": "bib.bib35",
+          "single_citation": null,
+          "citation_type": null,
+          "nearest_citations": null
+        }
+      ]
+    },
+    "7 Conclusion": {
+      "content": "In conclusion, our research highlights the transformative potential of LLaVA-NeXT-Interleave in unifying and advancing the capabilities of Large Multimodal Models (LMMs) across diverse visual tasks. By leveraging the interleaved data format, we effectively integrate multi-image, video, 3D, and single-image scenarios, offering a cohesive approach to handling thwoese varied challenges. The introduction of the comprehensive M4-Instruct dataset and the LLaVA-Interleave Bench provides a solid foundation for training and evaluating LMMs, ensuring high-quality performance across multiple domains. Our extensive experiments validate that LLaVA-NeXT-Interleave not only sets new state-of-the-art benchmarks in multi-image tasks but also maintains exceptional performance in single-image tasks. Furthermore, the model exhibits promising emerging capabilities, such as cross-task transfer, showcasing its versatility and potential for broader applications. This work sets a new precedent in the field, paving the way for future advancements in multimodal AI and complex visual understanding tasks.",
+      "citations": []
+    }
+  },
+  "references": {
+    "data": {},
+    "key_map": {}
+  }
+}

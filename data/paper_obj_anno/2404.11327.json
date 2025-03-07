@@ -1,0 +1,954 @@
+{
+  "title": "Following the Human Thread in Social Navigation",
+  "abstract": "The success of collaboration between humans and robots in shared environments\nrelies on the robot's real-time adaptation to human motion. Specifically, in\nSocial Navigation, the agent should be close enough to assist but ready to back\nup to let the human move freely, avoiding collisions. Human trajectories emerge\nas crucial cues in Social Navigation, but they are partially observable from\nthe robot's egocentric view and computationally complex to process.\n  We propose the first Social Dynamics Adaptation model (SDA) based on the\nrobot's state-action history to infer the social dynamics. We propose a\ntwo-stage Reinforcement Learning framework: the first learns to encode the\nhuman trajectories into social dynamics and learns a motion policy conditioned\non this encoded information, the current status, and the previous action. Here,\nthe trajectories are fully visible, i.e., assumed as privileged information. In\nthe second stage, the trained policy operates without direct access to\ntrajectories. Instead, the model infers the social dynamics solely from the\nhistory of previous actions and statuses in real-time. Tested on the novel\nHabitat 3.0 platform, SDA sets a novel state of the art (SoA) performance in\nfinding and following humans.",
+  "paper_id": "http://arxiv.org/abs/2404.11327v1",
+  "markdown_content": "11institutetext: Sapienza University of Rome 22institutetext: Fondazione Bruno Kessler (FBK) 33institutetext: University of Padova\n\n# Following the Human Thread in Social Navigation\n\nLuca Scofano\\*\n11Alessio Sampieri\n11Tommaso Campari\n22Valentino Sacco\n11Indro Spinelli\n11Lamberto Ballan\n33Fabio Galasso\n11\n\n###### Abstract\n\nThe success of collaboration between humans and robots in shared environments relies on the robot’s real-time adaptation to human motion. Specifically, in Social Navigation, the agent should be close enough to assist but ready to back up to let the human move freely, avoiding collisions. Human trajectories emerge as crucial cues in Social Navigation, but they are partially observable from the robot’s egocentric view and computationally complex to process.\n\nWe propose the first Social Dynamics Adaptation model (SDA) based on the robot’s state-action history to infer the social dynamics. We propose a two-stage Reinforcement Learning framework: the first learns to encode the human trajectories into social dynamics and learns a motion policy conditioned on this encoded information, the current status, and the previous action. Here, the trajectories are fully visible, i.e.,  assumed as privileged information. In the second stage, the trained policy operates without direct access to trajectories. Instead, the model infers the social dynamics solely from the history of previous actions and statuses in real-time.\nTested on the novel Habitat 3.0 platform, SDA sets a novel state of the art (SoA) performance in finding and following humans.\n\nThe code is available at: [https://github.com/L-Scofano/SDA](https://github.com/L-Scofano/SDA \"\").\n\n###### Keywords:\n\nEmbodied AI Social Navigation Human Trajectories\n\n\\*\\*footnotetext: Authors contributed equally. This project was supported by PNRR MUR project PE0000013-FAIR. We acknowledge the CINECA award under the ISCRA initiative for the availability of high-performance computing resources and support.\n\n\\\\includegraphics\n\n\\[width=\\]figures/teaser\\_landscape.png\n\nFigure 1: We present our novel Social Dynamic Adaptation model (SDA). The framework involves two stages of training that allow the model to infer, given its past observations and actions, another agent’s Social Dynamics.\nIn the first training stage, the model embeds the followed agent’s trajectory, which together with sensor perceptions compose the input to the model’s Social navigation Policy (π𝜋\\\\pi). The knowledge obtained from the human trajectory strongly helps the navigation policy in finding and following an agent, however, this information is often not available during deployment.\nIn the second stage, SDA learns to adapt past statuses and actions, which are always available, to the first stage’s Social Dynamics embedding z^^𝑧\\\\hat{z}. As depicted in the figure, the status contains depth maps and BB detection of the person, if observable from the egocentric robot view. z^^𝑧\\\\hat{z} is then paired with current observations as input to the frozen π𝜋\\\\pi.\n\n## 1 Introduction\n\nTraditional navigation techniques within Embodied Artificial Intelligence (EAI) have marked a crucial advancement by introducing robots into real-life environments. However, these techniques have primarily focused on agents traversing vacant spaces. Conversely, the significance of social navigation within EAI has steadily increased. Social navigation entails agents’ capacity to navigate human-centric environments while considering human movements and behaviours. These agents need to be able to locate, track, and interact with humans in a safe and socially acceptable manner.\nPrevious studies predominantly characterized Social Navigation as a variation of PointGoal Navigation, wherein agents strive to reach specified destinations while considering human movements \\[ [48](https://ar5iv.org/html/2404.11327#bib.bib48 \"\"), [50](https://ar5iv.org/html/2404.11327#bib.bib50 \"\"), [32](https://ar5iv.org/html/2404.11327#bib.bib32 \"\")\\]. Habitat 3.0 \\[ [36](https://ar5iv.org/html/2404.11327#bib.bib36 \"\")\\], a significant breakthrough in EAI, introduces a lifelike environment seamlessly incorporating human avatars. This integration enables the investigation of human-agent interactions within a controlled, risk-free, dynamic environment. What sets Habitat 3.0 \\[ [36](https://ar5iv.org/html/2404.11327#bib.bib36 \"\")\\] apart is its ability to replicate complex scenarios where human intentions are constantly changing. Nevertheless, this dynamism also presents particular challenges, such as collision avoidance and achieving success in locating and following humans.\n\nDespite notable efforts in collision avoidance and safety, most existing methods for Social Navigation either rely on privileged information that is not available in real-world scenarios or do not adequately capture the social dynamics and norms of human behaviour. For instance, \\[ [48](https://ar5iv.org/html/2404.11327#bib.bib48 \"\")\\] and \\[ [50](https://ar5iv.org/html/2404.11327#bib.bib50 \"\")\\] use a GPS and compass sensor to provide the agent with perfect localization, which might be unrealistic even if using SLAM \\[ [31](https://ar5iv.org/html/2404.11327#bib.bib31 \"\"), [17](https://ar5iv.org/html/2404.11327#bib.bib17 \"\")\\] methods, whenever the human is not in the line of sight. While \\[ [32](https://ar5iv.org/html/2404.11327#bib.bib32 \"\")\\] and \\[ [52](https://ar5iv.org/html/2404.11327#bib.bib52 \"\")\\] do not account for the social factors that influence human behaviour. Therefore, this limitation hinders their practical applicability and adaptability to dynamic environments. \\[ [9](https://ar5iv.org/html/2404.11327#bib.bib9 \"\")\\], instead, models some social factors in the form of Proximity Tasks but fails to account for the cooperative nature that a social agent must possess, restricting itself to merely avoiding collisions with them.\nThe current SoA model proposed in \\[ [36](https://ar5iv.org/html/2404.11327#bib.bib36 \"\")\\] necessitates privileged information, such as humanoid GPS, which offers polar coordinates, detailing the accurate distance and angle of the human from the robot, to attain high-performance outcomes. However, this requirement is highly impractical in real-world environments during inference.\n\nThis paper proposes a novel Social Dynamics Adaptation model (SDA), shown in Fig. [2](https://ar5iv.org/html/2404.11327#S2.F2 \"Figure 2 ‣ Modelling dynamic environments. ‣ 2 Related Work ‣ Following the Human Thread in Social Navigation\"), that effectively solves the robot’s awareness of complex human behaviors, even temporarily losing sight of the person and fast robot motion. Specifically, the first stage trains a base policy considering human trajectories encoded into a latent vector. The latent vector is a low-dimensional, nonlinear projection of the human trajectories, and it is trained end-to-end with the base policy to extract the social factors that led the robots to choose better actions. The subsequent supervised adaptation stage regresses this latent vector using only the robot’s state and action history. Unlike previous methods, such as \\[ [48](https://ar5iv.org/html/2404.11327#bib.bib48 \"\")\\] and \\[ [52](https://ar5iv.org/html/2404.11327#bib.bib52 \"\")\\], which often rely on simulated privileged information or simplified social behavior models, our approach learns to respond to real-world dynamics in real time. In summary, SDA adapts and accounts for unpredictable human behaviors by exploiting privileged information during training and recovering this fundamental signal during deployment when it is often impractical to compute. Finally, the deployed robot features the motion policy, learned in the first stage, and the social dynamics, inferred from prior statuses and actions.\n\nOut of extensive benchmarking, SDA outperforms the approach proposed in Habitat 3.0 \\[ [36](https://ar5iv.org/html/2404.11327#bib.bib36 \"\")\\] and a second adapted best performer method \\[ [9](https://ar5iv.org/html/2404.11327#bib.bib9 \"\")\\] from Habitat 2.0 \\[ [43](https://ar5iv.org/html/2404.11327#bib.bib43 \"\")\\]. We conduct a thorough experimental evaluation on the core contribution of this work, i.e., learning to infer the social dynamics from (privileged) information about the person.\nRemarkably, out of ablative studies, we conclude that not only are human trajectories strong input information for the robot control policy, but they also make better supervision for inferring the social dynamics latent for the same policy. Other oracular information such as the humanoid GPS (direction and distance from the person-to-robot) are powerful sensors for the control policy but do not yield adaptable social dynamics to infer the human-robot-scene interaction.\n\n## 2 Related Work\n\n##### Embodied Navigation.\n\nRecently, there has been a surge in exploring indoor navigation within an embodied framework \\[ [16](https://ar5iv.org/html/2404.11327#bib.bib16 \"\")\\]. This upswing has been facilitated primarily by the availability of large-scale datasets comprising 3D indoor environments \\[ [10](https://ar5iv.org/html/2404.11327#bib.bib10 \"\"), [42](https://ar5iv.org/html/2404.11327#bib.bib42 \"\"), [39](https://ar5iv.org/html/2404.11327#bib.bib39 \"\")\\] and simulators designed for simulating navigation within these dynamic 3D spaces \\[ [41](https://ar5iv.org/html/2404.11327#bib.bib41 \"\"), [42](https://ar5iv.org/html/2404.11327#bib.bib42 \"\"), [23](https://ar5iv.org/html/2404.11327#bib.bib23 \"\")\\]. Nevertheless, these simulators are not equipped to handle human entities within the environments, restricting the investigation to navigation tasks in scenarios where the agent functions independently or, at most, alongside humans simulated via static meshes that simulate movement \\[ [49](https://ar5iv.org/html/2404.11327#bib.bib49 \"\"), [52](https://ar5iv.org/html/2404.11327#bib.bib52 \"\")\\]. These simulated humans are treated as dynamic obstacles and lack compliance with any social construct. This constraint has been effectively addressed with Habitat 3.0 \\[ [36](https://ar5iv.org/html/2404.11327#bib.bib36 \"\")\\], the simulator used for this research. Habitat 3.0 introduces the capability to simulate the behaviours of humans engaging in tasks within dynamic environments, thus overcoming the limitations mentioned above. Furthermore, there is no longer a need to directly train social models in the real world, where there is a tangible risk of causing harm to actual humans. Thus, Habitat 3.0 establishes itself as a viable proxy for real-world adaptation of social models trained in simulation.\n\nThanks to these simulators the realm of EAI has witnessed the introduction of numerous tasks \\[ [16](https://ar5iv.org/html/2404.11327#bib.bib16 \"\")\\], including PointGoal Navigation \\[ [48](https://ar5iv.org/html/2404.11327#bib.bib48 \"\")\\], ObjectGoal Navigation \\[ [4](https://ar5iv.org/html/2404.11327#bib.bib4 \"\")\\], Embodied Question Answering \\[ [47](https://ar5iv.org/html/2404.11327#bib.bib47 \"\")\\], and Vision and Language Navigation (VLN) \\[ [2](https://ar5iv.org/html/2404.11327#bib.bib2 \"\"), [24](https://ar5iv.org/html/2404.11327#bib.bib24 \"\")\\]. Various modular approaches \\[ [8](https://ar5iv.org/html/2404.11327#bib.bib8 \"\"), [12](https://ar5iv.org/html/2404.11327#bib.bib12 \"\"), [11](https://ar5iv.org/html/2404.11327#bib.bib11 \"\"), [38](https://ar5iv.org/html/2404.11327#bib.bib38 \"\"), [40](https://ar5iv.org/html/2404.11327#bib.bib40 \"\")\\] have been proposed to address the challenges of navigating through static, single-agent environments. These approaches utilize maps constructed from depth images and conduct path planning directly on these maps. However, these approaches are unsuitable in social settings where dynamic objects (humans) move within the environment. This is because humans are observable only within the agent’s field of view (FOV). Moreover, the agent must address the additional challenge of tracking and mapping. End-to-end RL-trained policies \\[ [46](https://ar5iv.org/html/2404.11327#bib.bib46 \"\"), [32](https://ar5iv.org/html/2404.11327#bib.bib32 \"\"), [51](https://ar5iv.org/html/2404.11327#bib.bib51 \"\"), [7](https://ar5iv.org/html/2404.11327#bib.bib7 \"\"), [50](https://ar5iv.org/html/2404.11327#bib.bib50 \"\")\\], should be adapted to learn also social clues similarly to \\[ [9](https://ar5iv.org/html/2404.11327#bib.bib9 \"\")\\], where the agent learned proxemics information about the humans moving in the environments thanks to two proximity tasks.\nIn this paper, instead, we try to learn social behaviours directly by internally modeling the humanoid trajectories in the latent representation of the agent. Furthermore, differently from \\[ [9](https://ar5iv.org/html/2404.11327#bib.bib9 \"\")\\], the agent’s aim is no longer just avoiding collisions. Still, it involves locating this dynamically acting human and following them for a specified number of steps while maintaining a safe distance. This evolution of the task demands a heightened level of social comprehension from the agent, requiring the anticipation of the person’s intentions and the ability to trail them closely without compromising safety.\n\n##### Socially-Aware Navigation.\n\nResearch in robotics, computer vision, and the analysis of human social behavior explored socially aware representations and models \\[ [30](https://ar5iv.org/html/2404.11327#bib.bib30 \"\")\\]. Extending from the realm of collision-free multi-agent navigation \\[ [6](https://ar5iv.org/html/2404.11327#bib.bib6 \"\"), [5](https://ar5iv.org/html/2404.11327#bib.bib5 \"\"), [15](https://ar5iv.org/html/2404.11327#bib.bib15 \"\"), [27](https://ar5iv.org/html/2404.11327#bib.bib27 \"\")\\] and navigation in dynamic environments \\[ [3](https://ar5iv.org/html/2404.11327#bib.bib3 \"\")\\], researchers have further expanded their investigations to encompass scenarios involving human presence \\[ [20](https://ar5iv.org/html/2404.11327#bib.bib20 \"\"), [18](https://ar5iv.org/html/2404.11327#bib.bib18 \"\"), [14](https://ar5iv.org/html/2404.11327#bib.bib14 \"\"), [29](https://ar5iv.org/html/2404.11327#bib.bib29 \"\"), [13](https://ar5iv.org/html/2404.11327#bib.bib13 \"\")\\].\n\nThe approach presented in \\[ [14](https://ar5iv.org/html/2404.11327#bib.bib14 \"\")\\] incorporates collision avoidance algorithms like CADRL \\[ [15](https://ar5iv.org/html/2404.11327#bib.bib15 \"\")\\] while introducing common-sense social rules. This integration aims to reduce uncertainty while minimizing the risk of encountering the Freezing Robot Problem \\[ [44](https://ar5iv.org/html/2404.11327#bib.bib44 \"\")\\]. Other works \\[ [18](https://ar5iv.org/html/2404.11327#bib.bib18 \"\"), [13](https://ar5iv.org/html/2404.11327#bib.bib13 \"\")\\] seek to model human-agent interaction by employing techniques such as spatiotemporal graphs \\[ [29](https://ar5iv.org/html/2404.11327#bib.bib29 \"\")\\].\n\nTypically, these methods undergo testing in a minimal number of environments that offer complete knowledge about the human positions and velocities \\[ [13](https://ar5iv.org/html/2404.11327#bib.bib13 \"\"), [15](https://ar5iv.org/html/2404.11327#bib.bib15 \"\")\\], featuring simple obstacles and often assuming collaboration between moving agents\\[ [18](https://ar5iv.org/html/2404.11327#bib.bib18 \"\"), [13](https://ar5iv.org/html/2404.11327#bib.bib13 \"\")\\]. In contrast, our focus revolves around SocialNav within expansive indoor environments, characterized by partial knowledge about them, since the agent perceives the environment only through its sensors from an egocentric perspective, and no information about the velocity or position of the human is given to the agent. Our SDA addresses the missing information from the interacting human position, inferring it from the robot’s history of actions and status.\n\n##### Modelling dynamic environments.\n\nSimulated environments \\[ [26](https://ar5iv.org/html/2404.11327#bib.bib26 \"\"), [45](https://ar5iv.org/html/2404.11327#bib.bib45 \"\"), [35](https://ar5iv.org/html/2404.11327#bib.bib35 \"\")\\] offer privileged information about the scene whose exploitation can be computationally intense or unfeasible during deployment. While navigating social environments, it is vital to take into consideration human behaviour\\[ [22](https://ar5iv.org/html/2404.11327#bib.bib22 \"\")\\]. Ideally, one would want to forecast people’s position for better path planning \\[ [33](https://ar5iv.org/html/2404.11327#bib.bib33 \"\")\\], but forecasting robot-person interactions is significantly slower \\[ [37](https://ar5iv.org/html/2404.11327#bib.bib37 \"\")\\] than navigation policies, hence being challenging to be considered for training or deployment.\nTo overcome this problem, we leverage literature on system identification \\[ [1](https://ar5iv.org/html/2404.11327#bib.bib1 \"\"), [19](https://ar5iv.org/html/2404.11327#bib.bib19 \"\")\\] to infer the encoded privileged information during robot navigation. Once encoded in a latent space during the first training stage and used to train the primary policy, it is possible to asynchronously derive that same information from the state-action history \\[ [25](https://ar5iv.org/html/2404.11327#bib.bib25 \"\"), [28](https://ar5iv.org/html/2404.11327#bib.bib28 \"\"), [53](https://ar5iv.org/html/2404.11327#bib.bib53 \"\")\\], influenced by the signal we want to identify. Unlike previous works, we are the first to identify the social dynamics (under the form of human trajectories), with the intuition that modeling human behavior is fundamental for efficient human-robot collaboration.\n\n\\\\includegraphics\n\n\\[width=\\]figures/pipeline\\_new.png\n\nFigure 2: Pipeline of the novel methodology proposed. First, we jointly learn to encode human trajectories and a motion policy. In the next stage, given the previous states and actions, we infer the social dynamics and pass the estimated latent vector to the frozen policy.\n\n## 3 Methodology\n\nThis section introduces a novel framework, SDA , for social navigation that incorporates human trajectories into the sequential decision-making process. The first stage of our approach focuses on encoding human trajectories into a latent social context to represent the social dynamics that are functional to the agent motion policy. In the second stage, we introduce the Adapter module, which enables the estimation of social information from the agent’s past behavior. Recovering this signal allows the robot to operate in the real world without explicitly representing human behavior. We elucidate the training process, trajectory modeling, and optimization techniques utilized in our approach, highlighting its effectiveness in addressing the challenges of social navigation.\n\n##### Problem formalization.\n\nThe problem involves the task of locating and following a humanoid in motion within a household environment, maintaining a distance of 1 to 2 meters for at least k𝑘k steps \\[ [36](https://ar5iv.org/html/2404.11327#bib.bib36 \"\")\\].\n\nWith the status xtsubscript𝑥𝑡x\\_{t}, we represent the agent’s “perception” at time t𝑡t. We exploit depth images from different cameras placed on the robot and a preprocessed version containing a humanoid detection bounding box. These perceptions are processed with a ResNet \\[ [21](https://ar5iv.org/html/2404.11327#bib.bib21 \"\")\\] before being fed to the recurrent policy network, selecting the best action atsubscript𝑎𝑡a\\_{t} at time t𝑡t. We use Decentralized Distributed Proximal Policy Optimization (DD-PPO) \\[ [48](https://ar5iv.org/html/2404.11327#bib.bib48 \"\")\\] to iteratively improve the agent’s policy while maximizing rewards derived from interactions with several environments executed in parallel, ensuring stability through controlled policy updates and lower training times.\n\nThe pipeline described above can be considered a baseline implementation that does not contain privileged information but relies only on the robot’s onboard sensors. To address the social aspect required by the task, we consider additional details on the humanoid, e.g., “social dynamics”, defined as et−N:t−1subscript𝑒:𝑡𝑁𝑡1e\\_{t-N:t-1}. In the following sections, we describe how exploiting this information at training time can improve performance during deployment when it is absent.\n\n### 3.1 Stage 1: Social Policy\n\nRecurrent policies such as DD-PPO take as input the current status, in our case, a collection of depth images processed via a Resnet xtsubscript𝑥𝑡x\\_{t}, and the action at the previous time-step at−1subscript𝑎𝑡1a\\_{t-1}. We add another input to this pipeline, namely a latent vector ztsubscript𝑧𝑡z\\_{t} built by encoding the humanoid privileged information et−N:t−1subscript𝑒:𝑡𝑁𝑡1e\\_{t-N:t-1}:\n\n|     |     |     |     |     |\n| --- | --- | --- | --- | --- |\n|  | ztsubscript𝑧𝑡\\\\displaystyle z\\_{t} | =μ​(et−N:t−1)absent𝜇subscript𝑒:𝑡𝑁𝑡1\\\\displaystyle=\\\\mu(e\\_{t-N:t-1}) |  | (1) |\n|  | atsubscript𝑎𝑡\\\\displaystyle a\\_{t} | =π​(xt,at−1,zt)absent𝜋subscript𝑥𝑡subscript𝑎𝑡1subscript𝑧𝑡\\\\displaystyle=\\\\pi(x\\_{t},a\\_{t-1},z\\_{t}) |  | (2) |\n\nIntuitively, by training everything with the same objective ztsubscript𝑧𝑡z\\_{t} encodes the social dynamics that led the agent to maximize its reward, adapting to human movement patterns. Additionally, including trajectory data allows the agent to learn from past interactions and experiences.\nIn our approach, the trajectory encoder (μ𝜇\\\\mu) is implemented as Multilayer Perceptrons (MLPs). The objective retains its usual formulation without any explicit reference to the human trajectories:\n\n|     |     |     |     |\n| --- | --- | --- | --- |\n|  | LC​L​I​P=𝔼t​\\[min⁡(rt​(θ)​A^t,clip​(rt​(θ),1−ϵ,1+ϵ)​A^t)\\]superscript𝐿𝐶𝐿𝐼𝑃subscript𝔼𝑡delimited-\\[\\]subscript𝑟𝑡𝜃subscript^𝐴𝑡clipsubscript𝑟𝑡𝜃1italic-ϵ1italic-ϵsubscript^𝐴𝑡L^{CLIP}=\\\\mathbb{E}\\_{t}\\\\left\\[\\\\min\\\\left(r\\_{t}(\\\\theta)\\\\hat{A}\\_{t},\\\\text{clip}\\\\left(r\\_{t}(\\\\theta),1-\\\\epsilon,1+\\\\epsilon\\\\right)\\\\hat{A}\\_{t}\\\\right)\\\\right\\] |  | (3) |\n\nwhere rt​(θ)subscript𝑟𝑡𝜃r\\_{t}(\\\\theta) is the ratio of the probability of action atsubscript𝑎𝑡a\\_{t} under the current policy and the previous one that is being executed for gathering data.\nA^tsubscript^𝐴𝑡\\\\hat{A}\\_{t} represents the advantage function at time t𝑡t, guiding the policy towards actions that yield higher expected rewards.\n\nDefining what information is considered “privileged” and why is essential. In our context, it refers to detailed knowledge about the humanoid in the environment, such as the exact position of humanoids defining a trajectory (traj.), of the relative position with respect to the agent often denoted as humanoid GPS \\[ [36](https://ar5iv.org/html/2404.11327#bib.bib36 \"\")\\](hGPS). We can easily gather this information in simulated environments. However, collecting them in real-life scenarios is often impractical. This distinction is crucial as it highlights the challenge of transferring learned policies from simulation to the real world.\n\n### 3.2 Stage 2: Social Dynamics Regression\n\nWe aim to extract and exploit social cues directly from the robot’s perception and eliminate the need for auxiliary devices like GPS trackers on humanoids. Inspired by \\[ [25](https://ar5iv.org/html/2404.11327#bib.bib25 \"\")\\], we introduce the “social dynamics” module (Adapter), parametrized by an MLP ψ𝜓\\\\psi that takes as input the recent history of the robot’s states xt−N:t−1subscript𝑥:𝑡𝑁𝑡1x\\_{t-N:t-1} and actions at−N:t−1subscript𝑎:𝑡𝑁𝑡1a\\_{t-N:t-1} to generate a new latent vector z^tsubscript^𝑧𝑡\\\\hat{z}\\_{t}:\n\n|     |     |     |     |\n| --- | --- | --- | --- |\n|  | z^t=ψ​(xt−N:t−1,at−N:t−1)subscript^𝑧𝑡𝜓subscript𝑥:𝑡𝑁𝑡1subscript𝑎:𝑡𝑁𝑡1\\\\hat{z}\\_{t}=\\\\psi(x\\_{t-N:t-1},a\\_{t-N:t-1}) |  | (4) |\n\nWe obtain the state-action history by deploying the agent in the environment with optimal policy π∗superscript𝜋\\\\pi^{\\*} obtained after the first stage and the latent vector z^tsubscript^𝑧𝑡\\\\hat{z}\\_{t}:\n\n|     |     |     |     |\n| --- | --- | --- | --- |\n|  | at=π∗​(xt,at−1,z^t)subscript𝑎𝑡superscript𝜋subscript𝑥𝑡subscript𝑎𝑡1subscript^𝑧𝑡a\\_{t}=\\\\pi^{\\*}(x\\_{t},a\\_{t-1},\\\\hat{z}\\_{t}) |  | (5) |\n\nDuring this process, we optimize the Adapter, MLP, with a supervised regression objective, Mean Squared Error (MSE), to recover the original information contained in ztsubscript𝑧𝑡z\\_{t} that we compute relying on the preferential information trajectory:\n\n|     |     |     |     |\n| --- | --- | --- | --- |\n|  | MSE​(z^t,zt)=‖z^t−zt‖22MSEsubscript^𝑧𝑡subscript𝑧𝑡superscriptsubscriptnormsubscript^𝑧𝑡subscript𝑧𝑡22\\\\text{MSE}(\\\\hat{z}\\_{t},z\\_{t})=\\\\\\|\\\\hat{z}\\_{t}-z\\_{t}\\\\\\|\\_{2}^{2} |  | (6) |\n\nOnce we finalize the Adapter training, instead of relying on the privileged information, we can depend upon the robot’s states xt−N:t−1subscript𝑥:𝑡𝑁𝑡1x\\_{t-N:t-1} and actions at−N:t−1subscript𝑎:𝑡𝑁𝑡1a\\_{t-N:t-1} to generate z^tsubscript^𝑧𝑡\\\\hat{z}\\_{t}, serving as an estimate of the actual latent social dynamics vector ztsubscript𝑧𝑡z\\_{t}. Doing so enables the agent to estimate social dynamics online, improving its performance in dynamic environments and enhancing its social navigation capabilities, freeing it from dependence upon external sensors.\n\n### 3.3 Training details\n\nIn our training process, we encode social dynamics using a ResNet, which we train from scratch. The trajectory encoder μ𝜇\\\\mu consists of a 3-layer MLP, and the output ztsubscript𝑧𝑡z\\_{t} has a dimensionality of 128. The Adapter ψ𝜓\\\\psi comprises alternating spatial and temporal MLP layers, with the output z^tsubscript^𝑧𝑡\\\\hat{z}\\_{t} matching the dimensionality of ztsubscript𝑧𝑡z\\_{t}.\nWe jointly train the policy π𝜋\\\\pi, the perceptions encoder (ResNet), and the social dynamics (Trajectory Encoder) encoder μ𝜇\\\\mu during the first stage. In the second stage, everything is frozen except the Adapter.\n\nIn Stage 1, we utilize DD-PPO \\[ [48](https://ar5iv.org/html/2404.11327#bib.bib48 \"\")\\] for 250 million steps across 24 environments, following the training protocol presented in \\[ [36](https://ar5iv.org/html/2404.11327#bib.bib36 \"\")\\]. The training process takes approximately four days. In Stage 2, we employ supervised learning for 5 million steps across the same environments. The learning process lasts around 2 hours.\nBoth stages utilize 4 A100 GPUs for efficient computation.\n\n## 4 Results\n\nSection [4.1](https://ar5iv.org/html/2404.11327#S4.SS1 \"4.1 Quantitative Results ‣ 4 Results ‣ Following the Human Thread in Social Navigation\") presents our findings regarding Social Navigation, whereas Section [4.2](https://ar5iv.org/html/2404.11327#S4.SS2 \"4.2 Ablation studies ‣ 4 Results ‣ Following the Human Thread in Social Navigation\") conducts an ablation analysis concentrating on adaptable information and the role of the trajectory history length. Furthermore, Section [4.3](https://ar5iv.org/html/2404.11327#S4.SS3 \"4.3 Qualitative Results ‣ 4 Results ‣ Following the Human Thread in Social Navigation\") provides a qualitative exploration of our outcomes.\n\n##### Simulator.\n\nWe utilize our SDA on Habitat 3.0\\[ [36](https://ar5iv.org/html/2404.11327#bib.bib36 \"\")\\], a simulation platform designed for human-robot interaction within domestic settings. This platform offers precise humanoid simulation capabilities with a strong focus on collaborative tasks such as Social Navigation and Social Rearrangement. It offers a vast library of avatars featuring multiple gender representations, body shapes, and appearances, facilitated by SMPL-X \\[ [34](https://ar5iv.org/html/2404.11327#bib.bib34 \"\")\\]. Furthermore, it employs an oracle policy to generate movement and behavior, enabling programmable control of avatars for navigation, object interaction, and a range of other movements.\n\n##### Baselines.\n\nThe baselines we employ in our study are drawn from Habitat 3.0 \\[ [36](https://ar5iv.org/html/2404.11327#bib.bib36 \"\")\\] and consist of:\n\n- •\n\n\n_Heuristic Expert_: a heuristic baseline equipped with access to the environment map, employing a shortest path planner to devise a route to the current location of the humanoid. The heuristic expert operates on the following principles: When the agent is beyond a distance of 1.5 meters from the humanoid, it employs a “find” behavior, utilizing a path planner to approach the humanoid. Conversely, if the humanoid is within 1.5 meters, the expert executes a backup motion to prevent collision with the humanoid.\n\n- •\n\n\n_Baseline_: the current SoA method \\[ [36](https://ar5iv.org/html/2404.11327#bib.bib36 \"\")\\], a recurrent neural network policy trained with DD-PPO \\[ [48](https://ar5iv.org/html/2404.11327#bib.bib48 \"\")\\], operates on a “sensors-to-action” paradigm. Inputs to this policy consist of an egocentric arm and stereo depth sensors, a humanoid detector, and humanoid GPS coordinates, while the outputs are velocity commands in the robot’s local frame. Notably, this policy operates without access to an environment map.\nTable [1](https://ar5iv.org/html/2404.11327#S4.T1 \"Table 1 ‣ 4.1 Quantitative Results ‣ 4 Results ‣ Following the Human Thread in Social Navigation\") compares our model against the most realistic configuration, wherein the humanoid GPS data is unavailable.\n\n- •\n\n\n_Proximity tasks_: we also adapted the Proximity Tasks defined in \\[ [9](https://ar5iv.org/html/2404.11327#bib.bib9 \"\")\\] and applied them to the baseline \\[ [36](https://ar5iv.org/html/2404.11327#bib.bib36 \"\")\\]. These tasks were proposed for a different setup of SocialNav, where the agent acts in an environment with multiple humanoids and must navigate from point A to point B while avoiding collisions. We adapted the risk and compass proximity tasks to the SocialNav setting addressed in this article. In this context, the risk has a low value (close to 0) when the agent is within 1 to 2 meters from the humanoid and a value close to 1 when the distance is less than 1 meter or greater than 2 meters. Similarly, given the presence of only one humanoid in the environment, the compass was redefined to predict the angle between the humanoid and the agent. This adjustment aims to assist during the following phase, enabling the agent to follow the humanoid while maintaining a safe distance and staying aligned with the human. The proximity tasks are jointly trained with the policy and detached during evaluation.\n\n\n##### Metrics.\n\nWe used the metrics for the SocialNav task as defined in \\[ [36](https://ar5iv.org/html/2404.11327#bib.bib36 \"\")\\], briefly summarized in the following.\n\n1. _Finding Success (S𝑆S)_ is the ratio of the episodes where the agent successfully located and reached the human.\n2. _Finding Success Weighted by Path Steps (S​P​S𝑆𝑃𝑆SPS)_ measures the optimality of the path taken by the agent w.r.t. the optimal number of steps needed to reach the human.\n3. _Following Rate (F𝐹F)_ is the ratio of steps during which the robot maintains a distance of 1-2 meters from the humanoid while facing towards it relatively to the maximum possible following steps.\n4. _Collision Rate (C​R𝐶𝑅CR)_ is the ratio of the episodes that ended with the robot colliding with the humanoid.\n5. _Episode Success (E​S𝐸𝑆ES)_ measures the ratio of the episodes where the agent found the human and followed it for the required number of steps, maintaining a safe distance in the 1-2 meters range.\n\n##### Privileged information.\n\nIn our research, the privileged information under consideration includes humanoid GPS (hGPS) and human trajectories (traj.). Humanoid GPS is represented in polar coordinates, a method of specifying a point’s position in a plane using two parameters: the distance from the point to the origin (radius) and the angle formed between a reference direction (typically the positive x-axis) and a line connecting the origin to the point (polar angle or azimuth). In our context, the origin is defined as the robot’s position; thus, its position is implicitly known along with that of the human. Conversely, trajectories solely consist of information derived from the human’s position within the environment.\n\n### 4.1 Quantitative Results\n\nIn Table [1](https://ar5iv.org/html/2404.11327#S4.T1 \"Table 1 ‣ 4.1 Quantitative Results ‣ 4 Results ‣ Following the Human Thread in Social Navigation\"), we present the results obtained in Habitat 3.0 \\[ [36](https://ar5iv.org/html/2404.11327#bib.bib36 \"\")\\] for the Social Navigation task. The table is divided into three sections. The first one displays outcomes achieved by utilizing a heuristic expert endowed with extensive information, including its position, map data, and the humanoid’s position, granting it a competitive advantage over other methods. The subsequent section features models trained and tested using ground truth (GT) data (Baselines and Stage 1), thus establishing an upper limit for techniques utilizing more practical inputs feasible in real-world scenarios. Lastly, the final rows delineate results from methods conducting inference without privileged information. The models that use privileged information (GT) show that S1 has lower performance than the two Baselines, especially in S𝑆S and S​P​S𝑆𝑃𝑆SPS. This is to be expected, considering that while trajectories solely depict the movement of the human in the environment, hGPS furnishes crucial details on locating the humanoid, offering insights into the distance and angle between them.\n\nIn the second stage, despite the absence of human trajectory input, SDA maintains the performance level of Stage 1 by adapting to the social dynamics. Our model outperforms the best techniques in the find task, increasing S𝑆S and S​P​S𝑆𝑃𝑆SPS by 6%percent66\\\\%.\n\nOur approach generally improves performance in the episode success (E​S𝐸𝑆ES) metric, which occurs when the agent finds the humanoid and follows it for 400400400 steps. However, we emphasize that the test-time episode ends at 150015001500 steps or when the agent collides with the humanoid \\[ [36](https://ar5iv.org/html/2404.11327#bib.bib36 \"\")\\], not after the 400400400 follow steps. In this context, S𝑆S, S​P​S𝑆𝑃𝑆SPS, and F𝐹F metrics demonstrate how SDA, compared to the Baseline, more frequently locates the humanoid, follows a more optimal path (on average 438438438 vs. 540540540 steps), and follows it for a longer duration (390390390 vs. 218218218 steps). Therefore, as the agent follows the humanoid longer, it has more chances to collide with it, given that the episode does not necessarily end after the required steps. In a scenario where the test-time episode concludes either after 400400400 follow steps or immediately upon a collision between the agent and the humanoid, SDA and the Baseline show a comparable collision rate (C​R𝐶𝑅CR), 0.390.390.39, and 0.380.380.38, respectively.\n\nTable 1: Main results for Social Navigation. Within the table, GT denotes ground truth privileged information and \\* corresponds to reproduced results.\n\n\\\\resizebox\n\n1!\n\nModelshGPStraj.S ↑↑\\\\uparrowSPS ↑↑\\\\uparrowF ↑↑\\\\uparrowCR ↓↓\\\\downarrowES ↑↑\\\\uparrowHeuristic Expert \\[ [36](https://ar5iv.org/html/2404.11327#bib.bib36 \"\")\\]--1.000.970.510.52-Baseline \\[ [36](https://ar5iv.org/html/2404.11327#bib.bib36 \"\")\\]GT0.97±0.000.65±0.000.44±0.010.51±0.030.55±0.01\\*Baseline+Proximity \\[ [9](https://ar5iv.org/html/2404.11327#bib.bib9 \"\")\\]\\*\\*\\*Code refactored and adapted from \\[ [9](https://ar5iv.org/html/2404.11327#bib.bib9 \"\")\\] to Habitat 3.0.GT0.97±0.010.64±0.000.57±0.010.58±0.030.63±0.02SDA - S1GT0.92±0.000.46±0.010.44±0.020.61±0.020.50±0.01Baseline \\[ [36](https://ar5iv.org/html/2404.11327#bib.bib36 \"\")\\]0.76±0.020.34±0.010.29±0.010.48±0.030.40±0.02\\*Baseline+Proximity \\[ [9](https://ar5iv.org/html/2404.11327#bib.bib9 \"\")\\]0.85±0.020.41±0.020.37±0.010.58±0.020.41±0.01SDA - S20.91±0.010.45±0.010.39±0.010.57±0.020.43±0.02\n\nTable 2: Ablation studies for social dynamics estimation. GT denotes ground truth privileged information, and A indicates the adapted information.\n\n\\\\resizebox\n\n1!\n\nModelshGPStraj.hGPSAtraj.AS ↑↑\\\\uparrowSPS ↑↑\\\\uparrowF ↑↑\\\\uparrowCR ↓↓\\\\downarrowES ↑↑\\\\uparrowS1GTGT0.94±0.010.58±0.000.45±0.020.64±0.030.52±0.01S1GT0.93±0.000.62±0.010.46±0.010.64±0.020.48±0.01S1 (Proposed)GT0.92±0.000.46±0.010.44±0.020.61±0.020.50±0.01S2✓✓0.57±0.060.21±0.040.05±0.010.30±0.020.02±0.00S2✓0.70±0.020.31±0.020.05±0.010.70±0.030.03±0.01S2 (Proposed)✓0.91±0.010.45±0.010.39±0.010.57±0.020.43±0.02\n\n\\\\includegraphics\n\n\\[width=.48\\]figures/stage2\\_firstenc.png\n\\\\includegraphics\\[width=.48\\]figures/stage2\\_avgdist.png\n\nFigure 3: (left) Training step (x-axis) Vs the number of steps which it takes the robot to find the humanoid (y-axis), in the finding task;\n(right) Training step (x-axis) Vs the average distance which the robot manages to keep itself at from the humanoid (y-axis), in the task of following.\n\n### 4.2 Ablation studies\n\nIn the following section, we investigate the impact of various forms of privileged information and their adaptability. Additionally, we assess how the length of the trajectories fed in Stage 1 affects our model.\n\n#### 4.2.1 Adatptable information\n\nTable [2](https://ar5iv.org/html/2404.11327#S4.T2 \"Table 2 ‣ 4.1 Quantitative Results ‣ 4 Results ‣ Following the Human Thread in Social Navigation\") presents the results from Stage 1 (S1) and Stage 2 (S2) with the utilization of various privileged information, such as Humanoid GPS (hGPS) and human trajectories (traj.). During S1, particularly in S𝑆S and notably in S​P​S𝑆𝑃𝑆SPS, incorporating hGPS as an additional input leads to superior results. This advantage is likely attributed to hGPS containing implicit information about human and robot positions, facilitating more efficient path selection, especially in S​P​S𝑆𝑃𝑆SPS scenarios.\n\nHowever, this pattern is not evident in S2, where trajectories typically provide more adaptable information. As previously mentioned, hGPS inherently encompasses the robot’s position, posing challenges in regressing this data during the second stage due to the lack of initial context regarding the robot’s location relative to the environment. Furthermore, hGPS may be difficult to adapt when the human is detected and disappears around a wall. Since hGPS comprises polar coordinates, the distance between the robot and the human spans the wall. This issue does not arise when utilizing trajectories, as they do not require any information about the robot and can be adapted solely based on depth images and detection information.\n\nFig. [3](https://ar5iv.org/html/2404.11327#S4.F3 \"Figure 3 ‣ 4.1 Quantitative Results ‣ 4 Results ‣ Following the Human Thread in Social Navigation\")(left) illustrates the trend of the First encounter step over episode during Stage 2. The plot confirms that using trajectories facilitates the robot to find the person, which it achieves after only approx. 450 steps, while the hGPS and hGPS+traj take more than 700 steps. Finding the robot first results in higher S𝑆S and S​P​S𝑆𝑃𝑆SPS metrics, but it may incur larger chances of collision (C​R𝐶𝑅CR metric), due to having to then follow it for longer, cf. Sec. [4.1](https://ar5iv.org/html/2404.11327#S4.SS1 \"4.1 Quantitative Results ‣ 4 Results ‣ Following the Human Thread in Social Navigation\").\n\nFig. [3](https://ar5iv.org/html/2404.11327#S4.F3 \"Figure 3 ‣ 4.1 Quantitative Results ‣ 4 Results ‣ Following the Human Thread in Social Navigation\")(right) illustrates the average distance between the agent and the humanoid after the first encounter. While hGPS and hGPS+traj stay at approx. 4 meters, the proposed trajectory-based approach ranges between 1.5 and 1.9, thus well within the 1-2 meter range, which yields the success in the task of following (larger F𝐹F metric, but encompassing a larger risk of collision– C​R𝐶𝑅CR metric).\n\nTable 3: Ablation on the length of trajectories to consider during Stage 1\n\n| Timeframes | S ↑↑\\\\uparrow | SPS ↑↑\\\\uparrow | F ↑↑\\\\uparrow | CR ↓↓\\\\downarrow | ES ↑↑\\\\uparrow |\n| --- | --- | --- | --- | --- | --- |\n| 5 | 0.62±0.01 | 0.25±0.02 | 0.05±0.01 | 0.64±0.01 | 0.06±0.01 |\n| 20 (Proposed) | 0.92±0.00 | 0.46±0.01 | 0.44±0.02 | 0.61±0.02 | 0.50±0.01 |\n| 50 | 0.70±0.02 | 0.29±0.02 | 0.08±0.02 | 0.78±0.02 | 0.08±0.01 |\n\n\\\\includegraphics\n\n\\[width=\\]figures/qualitative\\_strategy3.png\n\nFigure 4:\nThe agent and the humanoid start the episode in separate rooms. The agent navigates through the environment in search of the humanoid, and once found, begins to follow it.\n\n#### 4.2.2 Length of trajectories\n\nTable [3](https://ar5iv.org/html/2404.11327#S4.T3 \"Table 3 ‣ 4.2.1 Adatptable information ‣ 4.2 Ablation studies ‣ 4 Results ‣ Following the Human Thread in Social Navigation\") illustrates the influence of trajectory length on our SDA. Employing 5 past timeframes as input yields generally inferior results, possibly due to the insufficient historical data to capture human dynamics. Similarly, using 50 timeframes leads to comparable outcomes. Although S𝑆S, S​P​S𝑆𝑃𝑆SPS, and F𝐹F metrics improve relative to the 5-frame scenario, they still lag behind our proposed model. This could be attributed to potential redundancy and counterproductive encoding of information.\n\n\\\\includegraphics\n\n\\[width=.48\\]figures/qualitative0.pdf\n\\\\includegraphics\\[width=.48\\]figures/qualitative1.pdf\n\nFigure 5: We showcase two different episodes. On the left, the agent successfully follows the human after it swiftly moves in front of the door. On the right, an episode where the human decides to move backward and the agent steps back to make way.\n\n### 4.3 Qualitative Results\n\nWe qualitatively demonstrate the results in our proposed SDA. Firstly, we showcase the agent’s ability to locate the humanoid within the environment by moving around, followed by its capability to follow the humanoid within the environment. Subsequently, we present two specific behaviors where the agent briefly spots the humanoid and one where it moves backward to create space for passage.\n\nFig. [4](https://ar5iv.org/html/2404.11327#S4.F4 \"Figure 4 ‣ 4.2.1 Adatptable information ‣ 4.2 Ablation studies ‣ 4 Results ‣ Following the Human Thread in Social Navigation\") shows an episode where the agent and the human are located in different rooms at the start. Then, the agent begins its search for the humanoid by navigating within the environment until the encounter takes place. After the encounter, the agent then transitions into the follow phase.\n\nThe episode in Fig. [5](https://ar5iv.org/html/2404.11327#S4.F5 \"Figure 5 ‣ 4.2.2 Length of trajectories ‣ 4.2 Ablation studies ‣ 4 Results ‣ Following the Human Thread in Social Navigation\") (left) illustrates the agent’s capability to track the human even when it is briefly observed. As the agent searches for the target in the bathroom, the humanoid swiftly passes in front of the door (Step 145) and disappears from the agent’s view again (Step 150). Due to learned social dynamics, the agent exploits the humanoid’s behavior and begins to follow it.\n\nIn the right episode in Fig. [5](https://ar5iv.org/html/2404.11327#S4.F5 \"Figure 5 ‣ 4.2.2 Length of trajectories ‣ 4.2 Ablation studies ‣ 4 Results ‣ Following the Human Thread in Social Navigation\"), the agent has already located the human and its objective is to follow it. It is observed that at Step 340, the human decides to move backward, prompting the agent to move backward as well, creating the necessary space for passage by Step 360. Then, it continues its task of following.\n\n##### Limitations.\n\nTable [1](https://ar5iv.org/html/2404.11327#S4.T1 \"Table 1 ‣ 4.1 Quantitative Results ‣ 4 Results ‣ Following the Human Thread in Social Navigation\") shows a dependency of stage 2 performance on the adaptability of information, highlighting the significance of this factor in determining the model’s effectiveness. Another limitation arises from having benchmarked the proposed model only in simulation and the reliance on information during training that is not easily accessible outside simulation (trajectories). Mitigating these limitations, the advent of Habitat 3.0 \\[ [36](https://ar5iv.org/html/2404.11327#bib.bib36 \"\")\\], has greatly minimized the domain gap between simulated and real environments.\n\n## 5 Conclusions\n\nOur study presents the Social Dynamics Adaptation model (SDA) for Social Navigation within interactive settings. Notably, it is the first to integrate privileged human dynamics information during training while adapting it in the following stage, enabling its application in realistic environments without relying on such privileged information. Our findings underscore the non-trivial nature of adapting information, highlighting the necessity for selective processes. In future research, we aim to extend our model by incorporating diverse human dynamics beyond trajectories, enhancing the robot’s comprehension of human movement patterns.\n\n## References\n\n- \\[1\\]\nAhmed, M., Qin, N.: Surrogate-based aerodynamic design optimization: Use of surrogates in aerodynamic design optimization. International Conference on Aerospace Sciences and Aviation Technology 13(AEROSPACE SCIENCES and AVIATION TECHNOLOGY, ASAT- 13, May 26 - 28, 2009), 1–26 (2009)\n\n- \\[2\\]\nAnderson, P., Wu, Q., Teney, D., Bruce, J., Johnson, M., Sünderhauf, N., Reid, I., Gould, S., van den Hengel, A.: Vision-and-language navigation: Interpreting visually-grounded navigation instructions in real environments. In: CVPR (2018)\n\n- \\[3\\]\nAoude, G.S., Luders, B.D., Joseph, J.M., Roy, N., How, J.P.: Probabilistically safe motion planning to avoid dynamic obstacles with uncertain motion patterns. Autonomous Robots 35(1), 51–76 (2013)\n\n- \\[4\\]\nBatra, D., Gokaslan, A., Kembhavi, A., Maksymets, O., Mottaghi, R., Savva, M., Toshev, A., Wijmans, E.: ObjectNav revisited: On evaluation of embodied agents navigating to objects. arXiv preprint arXiv:2006.13171 (2020)\n\n- \\[5\\]\nVan den Berg, J., Lin, M., Manocha, D.: Reciprocal velocity obstacles for real-time multi-agent navigation. In: IEEE International Conference on Robotics and Automation (ICRA) (2008)\n\n- \\[6\\]\nBerg, J.v.d., Guy, S.J., Lin, M., Manocha, D.: Reciprocal n-body collision avoidance. In: Robotics Research, pp. 3–19. Springer (2011)\n\n- \\[7\\]\nCampari, T., Eccher, P., Serafini, L., Ballan, L.: Exploiting scene-specific features for object goal navigation. In: European Conference on Computer Vision. pp. 406–421. Springer (2020)\n\n- \\[8\\]\nCampari, T., Lamanna, L., Traverso, P., Serafini, L., Ballan, L.: Online learning of reusable abstract models for object goal navigation. In: CVPR (2022)\n\n- \\[9\\]\nCancelli, E., Campari, T., Serafini, L., Chang, A.X., Ballan, L.: Exploiting proximity-aware tasks for embodied social navigation. In: Proceedings of the IEEE/CVF International Conference on Computer Vision (ICCV). pp. 10957–10967 (October 2023)\n\n- \\[10\\]\nChang, A., Dai, A., Funkhouser, T., Halber, M., Niessner, M., Savva, M., Song, S., Zeng, A., Zhang, Y.: Matterport3D: Learning from RGB-D data in indoor environments. In: International Conference on 3D Vision (3DV) (2017)\n\n- \\[11\\]\nChaplot, D.S., Gandhi, D.P., Gupta, A., Salakhutdinov, R.: Object goal navigation using goal-oriented semantic exploration. In: NeurIPS (2020)\n\n- \\[12\\]\nChaplot, D.S., Salakhutdinov, R., Gupta, A., Gupta, S.: Neural topological slam for visual navigation. In: CVPR (2020)\n\n- \\[13\\]\nChen, C., Liu, Y., Kreiss, S., Alahi, A.: Crowd-robot interaction: Crowd-aware robot navigation with attention-based deep reinforcement learning. In: IEEE International Conference on Robotics and Automation (ICRA) (2019)\n\n- \\[14\\]\nChen, Y.F., Everett, M., Liu, M., How, J.P.: Socially aware motion planning with deep reinforcement learning. In: IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS) (2017)\n\n- \\[15\\]\nChen, Y.F., Liu, M., Everett, M., How, J.P.: Decentralized non-communicating multiagent collision avoidance with deep reinforcement learning. In: IEEE International Conference on Robotics and Automation (ICRA) (2017)\n\n- \\[16\\]\nDeitke, M., Batra, D., Bisk, Y., Campari, T., Chang, A.X., Chaplot, D.S., Chen, C., D’Arpino, C.P., Ehsani, K., Farhadi, A., et al.: Retrospectives on the embodied ai workshop. arXiv preprint arXiv:2210.06849 (2022)\n\n- \\[17\\]\nEngel, J., Schöps, T., Cremers, D.: Lsd-slam: Large-scale direct monocular slam. In: Computer Vision – ECCV 2014 (2014)\n\n- \\[18\\]\nFerrer, G., Garrell, A., Sanfeliu, A.: Social-aware robot navigation in urban environments. In: Proc. of thr European Conference on Mobile Robots (2013)\n\n- \\[19\\]\nGuo, X., Li, W., Iorio, F.: Convolutional neural networks for steady flow approximation. In: Proceedings of the 22nd ACM SIGKDD International Conference on Knowledge Discovery and Data Mining. p. 481–490. KDD ’16, Association for Computing Machinery, New York, NY, USA (2016)\n\n- \\[20\\]\nGuzzi, J., Giusti, A., Gambardella, L.M., Theraulaz, G., Di Caro, G.A.: Human-friendly robot navigation in dynamic environments. In: IEEE International Conference on Robotics and Automation (ICRA) (2013)\n\n- \\[21\\]\nHe, K., Zhang, X., Ren, S., Sun, J.: Deep residual learning for image recognition. 2016 IEEE Conference on Computer Vision and Pattern Recognition (CVPR) (2016)\n\n- \\[22\\]\nKivrak, H., Çakmak, F., Kose, H., Yavuz, S.: Social navigation framework for assistive robots in human inhabited unknown environments. Engineering Science and Technology, an International Journal (2021)\n\n- \\[23\\]\nKolve, E., Mottaghi, R., Han, W., VanderBilt, E., Weihs, L., Herrasti, A., Gordon, D., Zhu, Y., Gupta, A., Farhadi, A.: Ai2-thor: An interactive 3d environment for visual ai. arXiv preprint arXiv:1712.05474 (2017)\n\n- \\[24\\]\nKrantz, J., Wijmans, E., Majumdar, A., Batra, D., Lee, S.: Beyond the nav-graph: Vision-and-language navigation in continuous environments. In: ECCV (2020)\n\n- \\[25\\]\nKumar, A., Fu, Z., Pathak, D., Malik, J.: RMA: Rapid motor adaptation for legged robots. In: Robotics: Science and Systems (2021)\n\n- \\[26\\]\nLi, C., Xia, F., Mart’in-Mart’in, R., Lingelbach, M., Srivastava, S., Shen, B., Vainio, K., Gokmen, C., Dharan, G., Jain, T., Kurenkov, A., Liu, K., Gweon, H., Wu, J., Fei-Fei, L., Savarese, S.: igibson 2.0: Object-centric simulation for robot learning of everyday household tasks. ArXiv abs/2108.03272 (2021)\n\n- \\[27\\]\nLong, P., Liu, W., Pan, J.: Deep-learned collision avoidance policy for distributed multiagent navigation. IEEE Robotics and Automation Letters 2(2), 656–663 (2017)\n\n- \\[28\\]\nLoquercio, A., Kumar, A., Malik, J.: Learning visual locomotion with cross-modal supervision. In: 2023 IEEE International Conference on Robotics and Automation (ICRA). pp. 7295–7302. IEEE (2023)\n\n- \\[29\\]\nLu, Y., Ruan, X., Huang, J.: Deep reinforcement learning based on social spatial–temporal graph convolution network for crowd navigation. Machines 10(8),  703 (2022)\n\n- \\[30\\]\nMöller, R., Furnari, A., Battiato, S., Härmä, A., Farinella, G.M.: A survey on human-aware robot navigation. Robotics and Autonomous Systems 145, 103837 (2021)\n\n- \\[31\\]\nMur-Artal, R., Montiel, J.M.M., Tardós, J.D.: ORB-SLAM: a versatile and accurate monocular SLAM system. IEEE Transactions on Robotics 31(5), 1147–1163 (2015)\n\n- \\[32\\]\nPartsey, R., Wijmans, E., Yokoyama, N., Dobosevych, O., Batra, D., Maksymets, O.: Is mapping necessary for realistic pointgoal navigation? In: CVPR (2022)\n\n- \\[33\\]\nPatle, B.K., L., G.B., Pandey, A., Parhi, D.R., Jagadeesh, A.: A review: On path planning strategies for navigation of mobile robot. Defence Technology (2019)\n\n- \\[34\\]\nPavlakos, G., Choutas, V., Ghorbani, N., Bolkart, T., Osman, A.A.A., Tzionas, D., Black, M.J.: Expressive body capture: 3d hands, face, and body from a single image. In: Proceedings IEEE Conf. on Computer Vision and Pattern Recognition (CVPR) (2019)\n\n- \\[35\\]\nPuig, X., Ra, K.K., Boben, M., Li, J., Wang, T., Fidler, S., Torralba, A.: Virtualhome: Simulating household activities via programs. 2018 IEEE/CVF Conference on Computer Vision and Pattern Recognition pp. 8494–8502 (2018)\n\n- \\[36\\]\nPuig, X., Undersander, E., Szot, A., Cote, M.D., Yang, T.Y., Partsey, R., Desai, R., Clegg, A.W., Hlavac, M., Min, S.Y., Vondruš, V., Gervet, T., Berges, V.P., Turner, J.M., Maksymets, O., Kira, Z., Kalakrishnan, M., Malik, J., Chaplot, D.S., Jain, U., Batra, D., Rai, A., Mottaghi, R.: Habitat 3.0: A co-habitat for humans, avatars and robots (2023)\n\n- \\[37\\]\nRahman, M.R.U., Scofano, L., Matteis, E.D., Flaborea, A., Sampieri, A., Galasso, F.: Best practices for 2-body pose forecasting. 2023 IEEE/CVF Conference on Computer Vision and Pattern Recognition Workshops (CVPRW) pp. 3614–3624 (2023)\n\n- \\[38\\]\nRamakrishnan, S.K., Chaplot, D.S., Al-Halah, Z., Malik, J., Grauman, K.: Poni: Potential functions for objectgoal navigation with interaction-free learning. In: CVPR (2022)\n\n- \\[39\\]\nRamakrishnan, S.K., Gokaslan, A., Wijmans, E., Maksymets, O., Clegg, A., Turner, J., Undersander, E., Galuba, W., Westbury, A., Chang, A.X., et al.: Habitat-matterport 3D dataset (HM3D): 1000 large-scale 3D environments for embodied AI. arXiv preprint arXiv:2109.08238 (2021)\n\n- \\[40\\]\nRaychaudhuri, S., Campari, T., Jain, U., Savva, M., Chang, A.X.: Mopa: Modular object navigation with pointgoal agents. In: Proceedings of the IEEE/CVF Winter Conference on Applications of Computer Vision (WACV). pp. 5763–5773 (January 2024)\n\n- \\[41\\]\nSavva, M., Kadian, A., Maksymets, O., Zhao, Y., Wijmans, E., Jain, B., Straub, J., Liu, J., Koltun, V., Malik, J., et al.: Habitat: A platform for embodied AI research. In: ICCV (2019)\n\n- \\[42\\]\nShen, B., Xia, F., Li, C., Martín-Martín, R., Fan, L., Wang, G., Pérez-D’Arpino, C., Buch, S., Srivastava, S., Tchapmi, L., et al.: iGibson 1.0: a simulation environment for interactive tasks in large realistic scenes. In: IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS) (2021)\n\n- \\[43\\]\nSzot, A., Clegg, A., Undersander, E., Wijmans, E., Zhao, Y., Turner, J., Maestre, N., Mukadam, M., Chaplot, D.S., Maksymets, O., Gokaslan, A., Vondru _vs_., V., Dharur, S., Meier, F., Galuba, W., Chang, A.X., Kira, Z., Koltun, V., Malik, J., Savva, M., Batra, D.: Habitat 2.0: Training home assistants to rearrange their habitat. ArXiv abs/2106.14405 (2021)\n\n- \\[44\\]\nTrautman, P., Krause, A.: Unfreezing the robot: Navigation in dense, interacting crowds. In: IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS) (2010)\n\n- \\[45\\]\nTsoi, N., Xiang, A., Yu, P., Sohn, S.S., Schwartz, G., Ramesh, S., Hussein, M., Gupta, A.W., Kapadia, M., Vázquez, M.: Sean 2.0: Formalizing and generating social situations for robot navigation. IEEE Robotics and Automation Letters 7, 11047–11054 (2022)\n\n- \\[46\\]\nWani, S., Patel, S., Jain, U., Chang, A.X., Savva, M.: MultiON: Benchmarking semantic map memory using multi-object navigation. In: NeurIPS (2020)\n\n- \\[47\\]\nWijmans, E., Datta, S., Maksymets, O., Das, A., Gkioxari, G., Lee, S., Essa, I., Parikh, D., Batra, D.: Embodied Question Answering in Photorealistic Environments with Point Cloud Perception. In: CVPR (2019)\n\n- \\[48\\]\nWijmans, E., Kadian, A., Morcos, A., Lee, S., Essa, I., Parikh, D., Savva, M., Batra, D.: DD-PPO: Learning near-perfect pointgoal navigators from 2.5 billion frames. In: ICLR (2019)\n\n- \\[49\\]\nXia, F., Shen, W.B., Li, C., Kasimbeg, P., Tchapmi, M.E., Toshev, A., Martín-Martín, R., Savarese, S.: Interactive gibson benchmark: A benchmark for interactive navigation in cluttered environments. IEEE Robotics and Automation Letters 5(2), 713–720 (2020)\n\n- \\[50\\]\nYe, J., Batra, D., Das, A., Wijmans, E.: Auxiliary Tasks and Exploration Enable ObjectNav. In: ICCV (2021)\n\n- \\[51\\]\nYe, J., Batra, D., Wijmans, E., Das, A.: Auxiliary Tasks Speed Up Learning PointGoal Navigation. In: Conference on Robot Learning (2020)\n\n- \\[52\\]\nYokoyama, N., Luo, Q., Batra, D., Ha, S.: Learning Robust Agents for Visual Navigation in Dynamic Environments: The Winning Entry of iGibson Challenge 2021. IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS) (2022)\n\n- \\[53\\]\nZhang, X., Wu, Y., Wang, H., Iida, F., Wang, L.: Adaptive locomotion learning for quadruped robots by combining drl with a cosine oscillator based rhythm controller. Applied Sciences 13(19) (2023)\n\n\n[◄](https://ar5iv.org/html/2404.11326) [![ar5iv homepage](https://ar5iv.org/assets/ar5iv.png)](https://ar5iv.org/) [Feeling\\\\\n\\\\\nlucky?](https://ar5iv.org/feeling_lucky) [Conversion\\\\\n\\\\\nreport](https://ar5iv.org/log/2404.11327) [Report\\\\\n\\\\\nan issue](https://github.com/dginev/ar5iv/issues/new?template=improve-article--arxiv-id-.md&title=Improve+article+2404.11327) [View original\\\\\n\\\\\non arXiv](https://arxiv.org/abs/2404.11327) [►](https://ar5iv.org/html/2404.11328)",
+  "sections": {
+    "1 Introduction": {
+      "content": "Traditional navigation techniques within Embodied Artificial Intelligence (EAI) have marked a crucial advancement by introducing robots into real-life environments. However, these techniques have primarily focused on agents traversing vacant spaces. Conversely, the significance of social navigation within EAI has steadily increased. Social navigation entails agents’ capacity to navigate human-centric environments while considering human movements and behaviours. These agents need to be able to locate, track, and interact with humans in a safe and socially acceptable manner.\nPrevious studies predominantly characterized Social Navigation as a variation of PointGoal Navigation, wherein agents strive to reach specified destinations while considering human movements \\[ [48], [50], [32]\\]. Habitat 3.0 \\[ [36]\\], a significant breakthrough in EAI, introduces a lifelike environment seamlessly incorporating human avatars. This integration enables the investigation of human-agent interactions within a controlled, risk-free, dynamic environment. What sets Habitat 3.0 \\[ [36]\\] apart is its ability to replicate complex scenarios where human intentions are constantly changing. Nevertheless, this dynamism also presents particular challenges, such as collision avoidance and achieving success in locating and following humans.\n\nDespite notable efforts in collision avoidance and safety, most existing methods for Social Navigation either rely on privileged information that is not available in real-world scenarios or do not adequately capture the social dynamics and norms of human behaviour. For instance, \\[ [48]\\] and \\[ [50]\\] use a GPS and compass sensor to provide the agent with perfect localization, which might be unrealistic even if using SLAM \\[ [31], [17]\\] methods, whenever the human is not in the line of sight. While \\[ [32]\\] and \\[ [52]\\] do not account for the social factors that influence human behaviour. Therefore, this limitation hinders their practical applicability and adaptability to dynamic environments. \\[ [9]\\], instead, models some social factors in the form of Proximity Tasks but fails to account for the cooperative nature that a social agent must possess, restricting itself to merely avoiding collisions with them.\nThe current SoA model proposed in \\[ [36]\\] necessitates privileged information, such as humanoid GPS, which offers polar coordinates, detailing the accurate distance and angle of the human from the robot, to attain high-performance outcomes. However, this requirement is highly impractical in real-world environments during inference.\n\nThis paper proposes a novel Social Dynamics Adaptation model (SDA), shown in Fig. [2]\\] and \\[ [52]\\], which often rely on simulated privileged information or simplified social behavior models, our approach learns to respond to real-world dynamics in real time. In summary, SDA adapts and accounts for unpredictable human behaviors by exploiting privileged information during training and recovering this fundamental signal during deployment when it is often impractical to compute. Finally, the deployed robot features the motion policy, learned in the first stage, and the social dynamics, inferred from prior statuses and actions.\n\nOut of extensive benchmarking, SDA outperforms the approach proposed in Habitat 3.0 \\[ [36]\\] and a second adapted best performer method \\[ [9]\\] from Habitat 2.0 \\[ [43]\\]. We conduct a thorough experimental evaluation on the core contribution of this work, i.e., learning to infer the social dynamics from (privileged) information about the person.\nRemarkably, out of ablative studies, we conclude that not only are human trajectories strong input information for the robot control policy, but they also make better supervision for inferring the social dynamics latent for the same policy. Other oracular information such as the humanoid GPS (direction and distance from the person-to-robot) are powerful sensors for the control policy but do not yield adaptable social dynamics to infer the human-robot-scene interaction.",
+      "citations": [
+        {
+          "start_pos": 775,
+          "end_pos": 779,
+          "text": "[48]",
+          "paper_id": "bib.bib48",
+          "single_citation": false,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 781,
+          "end_pos": 785,
+          "text": "[50]",
+          "paper_id": "bib.bib50",
+          "single_citation": false,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 787,
+          "end_pos": 791,
+          "text": "[32]",
+          "paper_id": "bib.bib32",
+          "single_citation": false,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 810,
+          "end_pos": 814,
+          "text": "[36]",
+          "paper_id": "bib.bib36",
+          "single_citation": true,
+          "citation_type": "method",
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1076,
+          "end_pos": 1080,
+          "text": "[36]",
+          "paper_id": "bib.bib36",
+          "single_citation": true,
+          "citation_type": "method",
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1616,
+          "end_pos": 1620,
+          "text": "[48]",
+          "paper_id": "bib.bib48",
+          "single_citation": true,
+          "citation_type": "others",
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1630,
+          "end_pos": 1634,
+          "text": "[50]",
+          "paper_id": "bib.bib50",
+          "single_citation": true,
+          "citation_type": "others",
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1763,
+          "end_pos": 1767,
+          "text": "[31]",
+          "paper_id": "bib.bib31",
+          "single_citation": false,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1769,
+          "end_pos": 1773,
+          "text": "[17]",
+          "paper_id": "bib.bib17",
+          "single_citation": false,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1842,
+          "end_pos": 1846,
+          "text": "[32]",
+          "paper_id": "bib.bib32",
+          "single_citation": true,
+          "citation_type": "others",
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1856,
+          "end_pos": 1860,
+          "text": "[52]",
+          "paper_id": "bib.bib52",
+          "single_citation": true,
+          "citation_type": "others",
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 2043,
+          "end_pos": 2046,
+          "text": "[9]",
+          "paper_id": "bib.bib9",
+          "single_citation": true,
+          "citation_type": "others",
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 2296,
+          "end_pos": 2300,
+          "text": "[36]",
+          "paper_id": "bib.bib36",
+          "single_citation": true,
+          "citation_type": "others",
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 2678,
+          "end_pos": 2681,
+          "text": "[2]",
+          "paper_id": "bib.bib48",
+          "single_citation": true,
+          "citation_type": "others",
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 2691,
+          "end_pos": 2695,
+          "text": "[52]",
+          "paper_id": "bib.bib52",
+          "single_citation": true,
+          "citation_type": "others",
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 3318,
+          "end_pos": 3322,
+          "text": "[36]",
+          "paper_id": "bib.bib36",
+          "single_citation": true,
+          "citation_type": "method",
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 3371,
+          "end_pos": 3374,
+          "text": "[9]",
+          "paper_id": "bib.bib9",
+          "single_citation": true,
+          "citation_type": "others",
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 3397,
+          "end_pos": 3401,
+          "text": "[43]",
+          "paper_id": "bib.bib43",
+          "single_citation": true,
+          "citation_type": "method",
+          "nearest_citations": null
+        }
+      ]
+    },
+    "2 Related Work": {
+      "content": "##### Embodied Navigation.\n\nRecently, there has been a surge in exploring indoor navigation within an embodied framework \\[ [16]\\]. This upswing has been facilitated primarily by the availability of large-scale datasets comprising 3D indoor environments \\[ [10], [42], [39]\\] and simulators designed for simulating navigation within these dynamic 3D spaces \\[ [41], [42], [23]\\]. Nevertheless, these simulators are not equipped to handle human entities within the environments, restricting the investigation to navigation tasks in scenarios where the agent functions independently or, at most, alongside humans simulated via static meshes that simulate movement \\[ [49], [52]\\]. These simulated humans are treated as dynamic obstacles and lack compliance with any social construct. This constraint has been effectively addressed with Habitat 3.0 \\[ [36]\\], the simulator used for this research. Habitat 3.0 introduces the capability to simulate the behaviours of humans engaging in tasks within dynamic environments, thus overcoming the limitations mentioned above. Furthermore, there is no longer a need to directly train social models in the real world, where there is a tangible risk of causing harm to actual humans. Thus, Habitat 3.0 establishes itself as a viable proxy for real-world adaptation of social models trained in simulation.\n\nThanks to these simulators the realm of EAI has witnessed the introduction of numerous tasks \\[ [16]\\], including PointGoal Navigation \\[ [48]\\], ObjectGoal Navigation \\[ [4]\\], Embodied Question Answering \\[ [47]\\], and Vision and Language Navigation (VLN) \\[ [2], [24]\\]. Various modular approaches \\[ [8], [12], [11], [38], [40]\\] have been proposed to address the challenges of navigating through static, single-agent environments. These approaches utilize maps constructed from depth images and conduct path planning directly on these maps. However, these approaches are unsuitable in social settings where dynamic objects (humans) move within the environment. This is because humans are observable only within the agent’s field of view (FOV). Moreover, the agent must address the additional challenge of tracking and mapping. End-to-end RL-trained policies \\[ [46], [32], [51], [7], [50]\\], should be adapted to learn also social clues similarly to \\[ [9]\\], where the agent learned proxemics information about the humans moving in the environments thanks to two proximity tasks.\nIn this paper, instead, we try to learn social behaviours directly by internally modeling the humanoid trajectories in the latent representation of the agent. Furthermore, differently from \\[ [9]\\], the agent’s aim is no longer just avoiding collisions. Still, it involves locating this dynamically acting human and following them for a specified number of steps while maintaining a safe distance. This evolution of the task demands a heightened level of social comprehension from the agent, requiring the anticipation of the person’s intentions and the ability to trail them closely without compromising safety.\n\n##### Socially-Aware Navigation.\n\nResearch in robotics, computer vision, and the analysis of human social behavior explored socially aware representations and models \\[ [30]\\]. Extending from the realm of collision-free multi-agent navigation \\[ [6], [5], [15], [27]\\] and navigation in dynamic environments \\[ [3]\\], researchers have further expanded their investigations to encompass scenarios involving human presence \\[ [20], [18], [14], [29], [13]\\].\n\nThe approach presented in \\[ [14]\\] incorporates collision avoidance algorithms like CADRL \\[ [15]\\] while introducing common-sense social rules. This integration aims to reduce uncertainty while minimizing the risk of encountering the Freezing Robot Problem \\[ [44]\\]. Other works \\[ [18], [13]\\] seek to model human-agent interaction by employing techniques such as spatiotemporal graphs \\[ [29]\\].\n\nTypically, these methods undergo testing in a minimal number of environments that offer complete knowledge about the human positions and velocities \\[ [13], [15]\\], featuring simple obstacles and often assuming collaboration between moving agents\\[ [18], [13]\\]. In contrast, our focus revolves around SocialNav within expansive indoor environments, characterized by partial knowledge about them, since the agent perceives the environment only through its sensors from an egocentric perspective, and no information about the velocity or position of the human is given to the agent. Our SDA addresses the missing information from the interacting human position, inferring it from the robot’s history of actions and status.\n\n##### Modelling dynamic environments.\n\nSimulated environments \\[ [26], [45], [35]\\] offer privileged information about the scene whose exploitation can be computationally intense or unfeasible during deployment. While navigating social environments, it is vital to take into consideration human behaviour\\[ [22]\\]. Ideally, one would want to forecast people’s position for better path planning \\[ [33]\\], but forecasting robot-person interactions is significantly slower \\[ [37]\\] than navigation policies, hence being challenging to be considered for training or deployment.\nTo overcome this problem, we leverage literature on system identification \\[ [1], [19]\\] to infer the encoded privileged information during robot navigation. Once encoded in a latent space during the first training stage and used to train the primary policy, it is possible to asynchronously derive that same information from the state-action history \\[ [25], [28], [53]\\], influenced by the signal we want to identify. Unlike previous works, we are the first to identify the social dynamics (under the form of human trajectories), with the intuition that modeling human behavior is fundamental for efficient human-robot collaboration.\n\n\\\\includegraphics\n\n\\[width=\\]figures/pipeline\\_new.png\n\nFigure 2: Pipeline of the novel methodology proposed. First, we jointly learn to encode human trajectories and a motion policy. In the next stage, given the previous states and actions, we infer the social dynamics and pass the estimated latent vector to the frozen policy.",
+      "citations": [
+        {
+          "start_pos": 124,
+          "end_pos": 128,
+          "text": "[16]",
+          "paper_id": "bib.bib16",
+          "single_citation": true,
+          "citation_type": "others",
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 257,
+          "end_pos": 261,
+          "text": "[10]",
+          "paper_id": "bib.bib10",
+          "single_citation": false,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 263,
+          "end_pos": 267,
+          "text": "[42]",
+          "paper_id": "bib.bib42",
+          "single_citation": false,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 269,
+          "end_pos": 273,
+          "text": "[39]",
+          "paper_id": "bib.bib39",
+          "single_citation": false,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 360,
+          "end_pos": 364,
+          "text": "[41]",
+          "paper_id": "bib.bib41",
+          "single_citation": false,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 366,
+          "end_pos": 370,
+          "text": "[42]",
+          "paper_id": "bib.bib42",
+          "single_citation": false,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 372,
+          "end_pos": 376,
+          "text": "[23]",
+          "paper_id": "bib.bib23",
+          "single_citation": false,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 665,
+          "end_pos": 669,
+          "text": "[49]",
+          "paper_id": "bib.bib49",
+          "single_citation": false,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 671,
+          "end_pos": 675,
+          "text": "[52]",
+          "paper_id": "bib.bib52",
+          "single_citation": false,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 849,
+          "end_pos": 853,
+          "text": "[36]",
+          "paper_id": "bib.bib36",
+          "single_citation": true,
+          "citation_type": "method",
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1439,
+          "end_pos": 1443,
+          "text": "[16]",
+          "paper_id": "bib.bib16",
+          "single_citation": true,
+          "citation_type": "others",
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1481,
+          "end_pos": 1485,
+          "text": "[48]",
+          "paper_id": "bib.bib48",
+          "single_citation": true,
+          "citation_type": "method",
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1514,
+          "end_pos": 1517,
+          "text": "[4]",
+          "paper_id": "bib.bib4",
+          "single_citation": true,
+          "citation_type": "method",
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1552,
+          "end_pos": 1556,
+          "text": "[47]",
+          "paper_id": "bib.bib47",
+          "single_citation": true,
+          "citation_type": "method",
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1604,
+          "end_pos": 1607,
+          "text": "[2]",
+          "paper_id": "bib.bib2",
+          "single_citation": false,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1609,
+          "end_pos": 1613,
+          "text": "[24]",
+          "paper_id": "bib.bib24",
+          "single_citation": false,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1647,
+          "end_pos": 1650,
+          "text": "[8]",
+          "paper_id": "bib.bib8",
+          "single_citation": false,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1652,
+          "end_pos": 1656,
+          "text": "[12]",
+          "paper_id": "bib.bib12",
+          "single_citation": false,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1658,
+          "end_pos": 1662,
+          "text": "[11]",
+          "paper_id": "bib.bib11",
+          "single_citation": false,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1664,
+          "end_pos": 1668,
+          "text": "[38]",
+          "paper_id": "bib.bib38",
+          "single_citation": false,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1670,
+          "end_pos": 1674,
+          "text": "[40]",
+          "paper_id": "bib.bib40",
+          "single_citation": false,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 2209,
+          "end_pos": 2213,
+          "text": "[46]",
+          "paper_id": "bib.bib46",
+          "single_citation": false,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 2215,
+          "end_pos": 2219,
+          "text": "[32]",
+          "paper_id": "bib.bib32",
+          "single_citation": false,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 2221,
+          "end_pos": 2225,
+          "text": "[51]",
+          "paper_id": "bib.bib51",
+          "single_citation": false,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 2227,
+          "end_pos": 2230,
+          "text": "[7]",
+          "paper_id": "bib.bib7",
+          "single_citation": false,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 2232,
+          "end_pos": 2236,
+          "text": "[50]",
+          "paper_id": "bib.bib50",
+          "single_citation": false,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 2301,
+          "end_pos": 2304,
+          "text": "[9]",
+          "paper_id": "bib.bib9",
+          "single_citation": true,
+          "citation_type": "others",
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 2621,
+          "end_pos": 2624,
+          "text": "[9]",
+          "paper_id": "bib.bib9",
+          "single_citation": true,
+          "citation_type": "others",
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 3212,
+          "end_pos": 3216,
+          "text": "[30]",
+          "paper_id": "bib.bib30",
+          "single_citation": true,
+          "citation_type": "others",
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 3289,
+          "end_pos": 3292,
+          "text": "[6]",
+          "paper_id": "bib.bib6",
+          "single_citation": false,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 3294,
+          "end_pos": 3297,
+          "text": "[5]",
+          "paper_id": "bib.bib5",
+          "single_citation": false,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 3299,
+          "end_pos": 3303,
+          "text": "[15]",
+          "paper_id": "bib.bib15",
+          "single_citation": false,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 3305,
+          "end_pos": 3309,
+          "text": "[27]",
+          "paper_id": "bib.bib27",
+          "single_citation": false,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 3354,
+          "end_pos": 3357,
+          "text": "[3]",
+          "paper_id": "bib.bib3",
+          "single_citation": true,
+          "citation_type": "others",
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 3467,
+          "end_pos": 3471,
+          "text": "[20]",
+          "paper_id": "bib.bib20",
+          "single_citation": false,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 3473,
+          "end_pos": 3477,
+          "text": "[18]",
+          "paper_id": "bib.bib18",
+          "single_citation": false,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 3479,
+          "end_pos": 3483,
+          "text": "[14]",
+          "paper_id": "bib.bib14",
+          "single_citation": false,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 3485,
+          "end_pos": 3489,
+          "text": "[29]",
+          "paper_id": "bib.bib29",
+          "single_citation": false,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 3491,
+          "end_pos": 3495,
+          "text": "[13]",
+          "paper_id": "bib.bib13",
+          "single_citation": false,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 3529,
+          "end_pos": 3533,
+          "text": "[14]",
+          "paper_id": "bib.bib14",
+          "single_citation": true,
+          "citation_type": "others",
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 3594,
+          "end_pos": 3598,
+          "text": "[15]",
+          "paper_id": "bib.bib15",
+          "single_citation": true,
+          "citation_type": "method",
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 3762,
+          "end_pos": 3766,
+          "text": "[44]",
+          "paper_id": "bib.bib44",
+          "single_citation": true,
+          "citation_type": "method",
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 3785,
+          "end_pos": 3789,
+          "text": "[18]",
+          "paper_id": "bib.bib18",
+          "single_citation": false,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 3791,
+          "end_pos": 3795,
+          "text": "[13]",
+          "paper_id": "bib.bib13",
+          "single_citation": false,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 3893,
+          "end_pos": 3897,
+          "text": "[29]",
+          "paper_id": "bib.bib29",
+          "single_citation": true,
+          "citation_type": "others",
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 4053,
+          "end_pos": 4057,
+          "text": "[13]",
+          "paper_id": "bib.bib13",
+          "single_citation": false,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 4059,
+          "end_pos": 4063,
+          "text": "[15]",
+          "paper_id": "bib.bib15",
+          "single_citation": false,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 4151,
+          "end_pos": 4155,
+          "text": "[18]",
+          "paper_id": "bib.bib18",
+          "single_citation": false,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 4157,
+          "end_pos": 4161,
+          "text": "[13]",
+          "paper_id": "bib.bib13",
+          "single_citation": false,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 4690,
+          "end_pos": 4694,
+          "text": "[26]",
+          "paper_id": "bib.bib26",
+          "single_citation": false,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 4696,
+          "end_pos": 4700,
+          "text": "[45]",
+          "paper_id": "bib.bib45",
+          "single_citation": false,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 4702,
+          "end_pos": 4706,
+          "text": "[35]",
+          "paper_id": "bib.bib35",
+          "single_citation": false,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 4932,
+          "end_pos": 4936,
+          "text": "[22]",
+          "paper_id": "bib.bib22",
+          "single_citation": true,
+          "citation_type": "others",
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 5022,
+          "end_pos": 5026,
+          "text": "[33]",
+          "paper_id": "bib.bib33",
+          "single_citation": true,
+          "citation_type": "others",
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 5099,
+          "end_pos": 5103,
+          "text": "[37]",
+          "paper_id": "bib.bib37",
+          "single_citation": true,
+          "citation_type": "others",
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 5278,
+          "end_pos": 5281,
+          "text": "[1]",
+          "paper_id": "bib.bib1",
+          "single_citation": false,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 5283,
+          "end_pos": 5287,
+          "text": "[19]",
+          "paper_id": "bib.bib19",
+          "single_citation": false,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 5555,
+          "end_pos": 5559,
+          "text": "[25]",
+          "paper_id": "bib.bib25",
+          "single_citation": false,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 5561,
+          "end_pos": 5565,
+          "text": "[28]",
+          "paper_id": "bib.bib28",
+          "single_citation": false,
+          "citation_type": null,
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 5567,
+          "end_pos": 5571,
+          "text": "[53]",
+          "paper_id": "bib.bib53",
+          "single_citation": false,
+          "citation_type": null,
+          "nearest_citations": null
+        }
+      ]
+    },
+    "3 Methodology": {
+      "content": "This section introduces a novel framework, SDA , for social navigation that incorporates human trajectories into the sequential decision-making process. The first stage of our approach focuses on encoding human trajectories into a latent social context to represent the social dynamics that are functional to the agent motion policy. In the second stage, we introduce the Adapter module, which enables the estimation of social information from the agent’s past behavior. Recovering this signal allows the robot to operate in the real world without explicitly representing human behavior. We elucidate the training process, trajectory modeling, and optimization techniques utilized in our approach, highlighting its effectiveness in addressing the challenges of social navigation.\n\n##### Problem formalization.\n\nThe problem involves the task of locating and following a humanoid in motion within a household environment, maintaining a distance of 1 to 2 meters for at least k𝑘k steps \\[ [36]\\].\n\nWith the status xtsubscript𝑥𝑡x\\_{t}, we represent the agent’s “perception” at time t𝑡t. We exploit depth images from different cameras placed on the robot and a preprocessed version containing a humanoid detection bounding box. These perceptions are processed with a ResNet \\[ [21]\\] before being fed to the recurrent policy network, selecting the best action atsubscript𝑎𝑡a\\_{t} at time t𝑡t. We use Decentralized Distributed Proximal Policy Optimization (DD-PPO) \\[ [48]\\] to iteratively improve the agent’s policy while maximizing rewards derived from interactions with several environments executed in parallel, ensuring stability through controlled policy updates and lower training times.\n\nThe pipeline described above can be considered a baseline implementation that does not contain privileged information but relies only on the robot’s onboard sensors. To address the social aspect required by the task, we consider additional details on the humanoid, e.g., “social dynamics”, defined as et−N:t−1subscript𝑒:𝑡𝑁𝑡1e\\_{t-N:t-1}. In the following sections, we describe how exploiting this information at training time can improve performance during deployment when it is absent.\n\n### 3.1 Stage 1: Social Policy\n\nRecurrent policies such as DD-PPO take as input the current status, in our case, a collection of depth images processed via a Resnet xtsubscript𝑥𝑡x\\_{t}, and the action at the previous time-step at−1subscript𝑎𝑡1a\\_{t-1}. We add another input to this pipeline, namely a latent vector ztsubscript𝑧𝑡z\\_{t} built by encoding the humanoid privileged information et−N:t−1subscript𝑒:𝑡𝑁𝑡1e\\_{t-N:t-1}:\n\n|     |     |     |     |     |\n| --- | --- | --- | --- | --- |\n|  | ztsubscript𝑧𝑡\\\\displaystyle z\\_{t} | =μ​(et−N:t−1)absent𝜇subscript𝑒:𝑡𝑁𝑡1\\\\displaystyle=\\\\mu(e\\_{t-N:t-1}) |  | (1) |\n|  | atsubscript𝑎𝑡\\\\displaystyle a\\_{t} | =π​(xt,at−1,zt)absent𝜋subscript𝑥𝑡subscript𝑎𝑡1subscript𝑧𝑡\\\\displaystyle=\\\\pi(x\\_{t},a\\_{t-1},z\\_{t}) |  | (2) |\n\nIntuitively, by training everything with the same objective ztsubscript𝑧𝑡z\\_{t} encodes the social dynamics that led the agent to maximize its reward, adapting to human movement patterns. Additionally, including trajectory data allows the agent to learn from past interactions and experiences.\nIn our approach, the trajectory encoder (μ𝜇\\\\mu) is implemented as Multilayer Perceptrons (MLPs). The objective retains its usual formulation without any explicit reference to the human trajectories:\n\n|     |     |     |     |\n| --- | --- | --- | --- |\n|  | LC​L​I​P=𝔼t​\\[min⁡(rt​(θ)​A^t,clip​(rt​(θ),1−ϵ,1+ϵ)​A^t)\\]superscript𝐿𝐶𝐿𝐼𝑃subscript𝔼𝑡delimited-\\[\\]subscript𝑟𝑡𝜃subscript^𝐴𝑡clipsubscript𝑟𝑡𝜃1italic-ϵ1italic-ϵsubscript^𝐴𝑡L^{CLIP}=\\\\mathbb{E}\\_{t}\\\\left\\[\\\\min\\\\left(r\\_{t}(\\\\theta)\\\\hat{A}\\_{t},\\\\text{clip}\\\\left(r\\_{t}(\\\\theta),1-\\\\epsilon,1+\\\\epsilon\\\\right)\\\\hat{A}\\_{t}\\\\right)\\\\right\\] |  | (3) |\n\nwhere rt​(θ)subscript𝑟𝑡𝜃r\\_{t}(\\\\theta) is the ratio of the probability of action atsubscript𝑎𝑡a\\_{t} under the current policy and the previous one that is being executed for gathering data.\nA^tsubscript^𝐴𝑡\\\\hat{A}\\_{t} represents the advantage function at time t𝑡t, guiding the policy towards actions that yield higher expected rewards.\n\nDefining what information is considered “privileged” and why is essential. In our context, it refers to detailed knowledge about the humanoid in the environment, such as the exact position of humanoids defining a trajectory (traj.), of the relative position with respect to the agent often denoted as humanoid GPS \\[ [36]\\](hGPS). We can easily gather this information in simulated environments. However, collecting them in real-life scenarios is often impractical. This distinction is crucial as it highlights the challenge of transferring learned policies from simulation to the real world.\n\n### 3.2 Stage 2: Social Dynamics Regression\n\nWe aim to extract and exploit social cues directly from the robot’s perception and eliminate the need for auxiliary devices like GPS trackers on humanoids. Inspired by \\[ [25]\\], we introduce the “social dynamics” module (Adapter), parametrized by an MLP ψ𝜓\\\\psi that takes as input the recent history of the robot’s states xt−N:t−1subscript𝑥:𝑡𝑁𝑡1x\\_{t-N:t-1} and actions at−N:t−1subscript𝑎:𝑡𝑁𝑡1a\\_{t-N:t-1} to generate a new latent vector z^tsubscript^𝑧𝑡\\\\hat{z}\\_{t}:\n\n|     |     |     |     |\n| --- | --- | --- | --- |\n|  | z^t=ψ​(xt−N:t−1,at−N:t−1)subscript^𝑧𝑡𝜓subscript𝑥:𝑡𝑁𝑡1subscript𝑎:𝑡𝑁𝑡1\\\\hat{z}\\_{t}=\\\\psi(x\\_{t-N:t-1},a\\_{t-N:t-1}) |  | (4) |\n\nWe obtain the state-action history by deploying the agent in the environment with optimal policy π∗superscript𝜋\\\\pi^{\\*} obtained after the first stage and the latent vector z^tsubscript^𝑧𝑡\\\\hat{z}\\_{t}:\n\n|     |     |     |     |\n| --- | --- | --- | --- |\n|  | at=π∗​(xt,at−1,z^t)subscript𝑎𝑡superscript𝜋subscript𝑥𝑡subscript𝑎𝑡1subscript^𝑧𝑡a\\_{t}=\\\\pi^{\\*}(x\\_{t},a\\_{t-1},\\\\hat{z}\\_{t}) |  | (5) |\n\nDuring this process, we optimize the Adapter, MLP, with a supervised regression objective, Mean Squared Error (MSE), to recover the original information contained in ztsubscript𝑧𝑡z\\_{t} that we compute relying on the preferential information trajectory:\n\n|     |     |     |     |\n| --- | --- | --- | --- |\n|  | MSE​(z^t,zt)=‖z^t−zt‖22MSEsubscript^𝑧𝑡subscript𝑧𝑡superscriptsubscriptnormsubscript^𝑧𝑡subscript𝑧𝑡22\\\\text{MSE}(\\\\hat{z}\\_{t},z\\_{t})=\\\\\\|\\\\hat{z}\\_{t}-z\\_{t}\\\\\\|\\_{2}^{2} |  | (6) |\n\nOnce we finalize the Adapter training, instead of relying on the privileged information, we can depend upon the robot’s states xt−N:t−1subscript𝑥:𝑡𝑁𝑡1x\\_{t-N:t-1} and actions at−N:t−1subscript𝑎:𝑡𝑁𝑡1a\\_{t-N:t-1} to generate z^tsubscript^𝑧𝑡\\\\hat{z}\\_{t}, serving as an estimate of the actual latent social dynamics vector ztsubscript𝑧𝑡z\\_{t}. Doing so enables the agent to estimate social dynamics online, improving its performance in dynamic environments and enhancing its social navigation capabilities, freeing it from dependence upon external sensors.\n\n### 3.3 Training details\n\nIn our training process, we encode social dynamics using a ResNet, which we train from scratch. The trajectory encoder μ𝜇\\\\mu consists of a 3-layer MLP, and the output ztsubscript𝑧𝑡z\\_{t} has a dimensionality of 128. The Adapter ψ𝜓\\\\psi comprises alternating spatial and temporal MLP layers, with the output z^tsubscript^𝑧𝑡\\\\hat{z}\\_{t} matching the dimensionality of ztsubscript𝑧𝑡z\\_{t}.\nWe jointly train the policy π𝜋\\\\pi, the perceptions encoder (ResNet), and the social dynamics (Trajectory Encoder) encoder μ𝜇\\\\mu during the first stage. In the second stage, everything is frozen except the Adapter.\n\nIn Stage 1, we utilize DD-PPO \\[ [48]\\] for 250 million steps across 24 environments, following the training protocol presented in \\[ [36]\\]. The training process takes approximately four days. In Stage 2, we employ supervised learning for 5 million steps across the same environments. The learning process lasts around 2 hours.\nBoth stages utilize 4 A100 GPUs for efficient computation.",
+      "citations": [
+        {
+          "start_pos": 986,
+          "end_pos": 990,
+          "text": "[36]",
+          "paper_id": "bib.bib36",
+          "single_citation": true,
+          "citation_type": "others",
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1272,
+          "end_pos": 1276,
+          "text": "[21]",
+          "paper_id": "bib.bib21",
+          "single_citation": true,
+          "citation_type": "method",
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1462,
+          "end_pos": 1466,
+          "text": "[48]",
+          "paper_id": "bib.bib48",
+          "single_citation": true,
+          "citation_type": "method",
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 4505,
+          "end_pos": 4509,
+          "text": "[36]",
+          "paper_id": "bib.bib36",
+          "single_citation": true,
+          "citation_type": "others",
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 4998,
+          "end_pos": 5002,
+          "text": "[25]",
+          "paper_id": "bib.bib25",
+          "single_citation": true,
+          "citation_type": "others",
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 7595,
+          "end_pos": 7599,
+          "text": "[48]",
+          "paper_id": "bib.bib48",
+          "single_citation": true,
+          "citation_type": "method",
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 7696,
+          "end_pos": 7700,
+          "text": "[36]",
+          "paper_id": "bib.bib36",
+          "single_citation": true,
+          "citation_type": "others",
+          "nearest_citations": null
+        }
+      ]
+    },
+    "4 Results": {
+      "content": "Section [4.1]Quantitative Results ‣ 4 Results ‣ Following the Human Thread in Social Navigation\") presents our findings regarding Social Navigation, whereas Section [4.2]Ablation studies ‣ 4 Results ‣ Following the Human Thread in Social Navigation\") conducts an ablation analysis concentrating on adaptable information and the role of the trajectory history length. Furthermore, Section [4.3]Qualitative Results ‣ 4 Results ‣ Following the Human Thread in Social Navigation\") provides a qualitative exploration of our outcomes.\n\n##### Simulator.\n\nWe utilize our SDA on Habitat 3.0\\[ [36]\\], a simulation platform designed for human-robot interaction within domestic settings. This platform offers precise humanoid simulation capabilities with a strong focus on collaborative tasks such as Social Navigation and Social Rearrangement. It offers a vast library of avatars featuring multiple gender representations, body shapes, and appearances, facilitated by SMPL-X \\[ [34]\\]. Furthermore, it employs an oracle policy to generate movement and behavior, enabling programmable control of avatars for navigation, object interaction, and a range of other movements.\n\n##### Baselines.\n\nThe baselines we employ in our study are drawn from Habitat 3.0 \\[ [36]\\] and consist of:\n\n- •\n\n\n_Heuristic Expert_: a heuristic baseline equipped with access to the environment map, employing a shortest path planner to devise a route to the current location of the humanoid. The heuristic expert operates on the following principles: When the agent is beyond a distance of 1.5 meters from the humanoid, it employs a “find” behavior, utilizing a path planner to approach the humanoid. Conversely, if the humanoid is within 1.5 meters, the expert executes a backup motion to prevent collision with the humanoid.\n\n- •\n\n\n_Baseline_: the current SoA method \\[ [36]\\], a recurrent neural network policy trained with DD-PPO \\[ [48]\\], operates on a “sensors-to-action” paradigm. Inputs to this policy consist of an egocentric arm and stereo depth sensors, a humanoid detector, and humanoid GPS coordinates, while the outputs are velocity commands in the robot’s local frame. Notably, this policy operates without access to an environment map.\nTable [1]Table 1 ‣ 4.1 Quantitative Results ‣ 4 Results ‣ Following the Human Thread in Social Navigation\") compares our model against the most realistic configuration, wherein the humanoid GPS data is unavailable.\n\n- •\n\n\n_Proximity tasks_: we also adapted the Proximity Tasks defined in \\[ [9]\\] and applied them to the baseline \\[ [36]\\]. These tasks were proposed for a different setup of SocialNav, where the agent acts in an environment with multiple humanoids and must navigate from point A to point B while avoiding collisions. We adapted the risk and compass proximity tasks to the SocialNav setting addressed in this article. In this context, the risk has a low value (close to 0) when the agent is within 1 to 2 meters from the humanoid and a value close to 1 when the distance is less than 1 meter or greater than 2 meters. Similarly, given the presence of only one humanoid in the environment, the compass was redefined to predict the angle between the humanoid and the agent. This adjustment aims to assist during the following phase, enabling the agent to follow the humanoid while maintaining a safe distance and staying aligned with the human. The proximity tasks are jointly trained with the policy and detached during evaluation.\n\n\n##### Metrics.\n\nWe used the metrics for the SocialNav task as defined in \\[ [36]\\], briefly summarized in the following.\n\n1. _Finding Success (S𝑆S)_ is the ratio of the episodes where the agent successfully located and reached the human.\n2. _Finding Success Weighted by Path Steps (S​P​S𝑆𝑃𝑆SPS)_ measures the optimality of the path taken by the agent w.r.t. the optimal number of steps needed to reach the human.\n3. _Following Rate (F𝐹F)_ is the ratio of steps during which the robot maintains a distance of 1-2 meters from the humanoid while facing towards it relatively to the maximum possible following steps.\n4. _Collision Rate (C​R𝐶𝑅CR)_ is the ratio of the episodes that ended with the robot colliding with the humanoid.\n5. _Episode Success (E​S𝐸𝑆ES)_ measures the ratio of the episodes where the agent found the human and followed it for the required number of steps, maintaining a safe distance in the 1-2 meters range.\n\n##### Privileged information.\n\nIn our research, the privileged information under consideration includes humanoid GPS (hGPS) and human trajectories (traj.). Humanoid GPS is represented in polar coordinates, a method of specifying a point’s position in a plane using two parameters: the distance from the point to the origin (radius) and the angle formed between a reference direction (typically the positive x-axis) and a line connecting the origin to the point (polar angle or azimuth). In our context, the origin is defined as the robot’s position; thus, its position is implicitly known along with that of the human. Conversely, trajectories solely consist of information derived from the human’s position within the environment.\n\n### 4.1 Quantitative Results\n\nIn Table [1]\\] for the Social Navigation task. The table is divided into three sections. The first one displays outcomes achieved by utilizing a heuristic expert endowed with extensive information, including its position, map data, and the humanoid’s position, granting it a competitive advantage over other methods. The subsequent section features models trained and tested using ground truth (GT) data (Baselines and Stage 1), thus establishing an upper limit for techniques utilizing more practical inputs feasible in real-world scenarios. Lastly, the final rows delineate results from methods conducting inference without privileged information. The models that use privileged information (GT) show that S1 has lower performance than the two Baselines, especially in S𝑆S and S​P​S𝑆𝑃𝑆SPS. This is to be expected, considering that while trajectories solely depict the movement of the human in the environment, hGPS furnishes crucial details on locating the humanoid, offering insights into the distance and angle between them.\n\nIn the second stage, despite the absence of human trajectory input, SDA maintains the performance level of Stage 1 by adapting to the social dynamics. Our model outperforms the best techniques in the find task, increasing S𝑆S and S​P​S𝑆𝑃𝑆SPS by 6%percent66\\\\%.\n\nOur approach generally improves performance in the episode success (E​S𝐸𝑆ES) metric, which occurs when the agent finds the humanoid and follows it for 400400400 steps. However, we emphasize that the test-time episode ends at 150015001500 steps or when the agent collides with the humanoid \\[ [36]\\], not after the 400400400 follow steps. In this context, S𝑆S, S​P​S𝑆𝑃𝑆SPS, and F𝐹F metrics demonstrate how SDA, compared to the Baseline, more frequently locates the humanoid, follows a more optimal path (on average 438438438 vs. 540540540 steps), and follows it for a longer duration (390390390 vs. 218218218 steps). Therefore, as the agent follows the humanoid longer, it has more chances to collide with it, given that the episode does not necessarily end after the required steps. In a scenario where the test-time episode concludes either after 400400400 follow steps or immediately upon a collision between the agent and the humanoid, SDA and the Baseline show a comparable collision rate (C​R𝐶𝑅CR), 0.390.390.39, and 0.380.380.38, respectively.\n\nTable 1: Main results for Social Navigation. Within the table, GT denotes ground truth privileged information and \\* corresponds to reproduced results.\n\n\\\\resizebox\n\n1!\n\nModelshGPStraj.S ↑↑\\\\uparrowSPS ↑↑\\\\uparrowF ↑↑\\\\uparrowCR ↓↓\\\\downarrowES ↑↑\\\\uparrowHeuristic Expert \\[ [36]\\]--1.000.970.510.52-Baseline \\[ [36]\\]GT0.97±0.000.65±0.000.44±0.010.51±0.030.55±0.01\\*Baseline+Proximity \\[ [9]\\]\\*\\*\\*Code refactored and adapted from \\[ [9]\\] to Habitat 3.0.GT0.97±0.010.64±0.000.57±0.010.58±0.030.63±0.02SDA - S1GT0.92±0.000.46±0.010.44±0.020.61±0.020.50±0.01Baseline \\[ [36]\\]0.76±0.020.34±0.010.29±0.010.48±0.030.40±0.02\\*Baseline+Proximity \\[ [9]\\]0.85±0.020.41±0.020.37±0.010.58±0.020.41±0.01SDA - S20.91±0.010.45±0.010.39±0.010.57±0.020.43±0.02\n\nTable 2: Ablation studies for social dynamics estimation. GT denotes ground truth privileged information, and A indicates the adapted information.\n\n\\\\resizebox\n\n1!\n\nModelshGPStraj.hGPSAtraj.AS ↑↑\\\\uparrowSPS ↑↑\\\\uparrowF ↑↑\\\\uparrowCR ↓↓\\\\downarrowES ↑↑\\\\uparrowS1GTGT0.94±0.010.58±0.000.45±0.020.64±0.030.52±0.01S1GT0.93±0.000.62±0.010.46±0.010.64±0.020.48±0.01S1 (Proposed)GT0.92±0.000.46±0.010.44±0.020.61±0.020.50±0.01S2✓✓0.57±0.060.21±0.040.05±0.010.30±0.020.02±0.00S2✓0.70±0.020.31±0.020.05±0.010.70±0.030.03±0.01S2 (Proposed)✓0.91±0.010.45±0.010.39±0.010.57±0.020.43±0.02\n\n\\\\includegraphics\n\n\\[width=.48\\]figures/stage2\\_firstenc.png\n\\\\includegraphics\\[width=.48\\]figures/stage2\\_avgdist.png\n\nFigure 3: (left) Training step (x-axis) Vs the number of steps which it takes the robot to find the humanoid (y-axis), in the finding task;\n(right) Training step (x-axis) Vs the average distance which the robot manages to keep itself at from the humanoid (y-axis), in the task of following.\n\n### 4.2 Ablation studies\n\nIn the following section, we investigate the impact of various forms of privileged information and their adaptability. Additionally, we assess how the length of the trajectories fed in Stage 1 affects our model.\n\n#### 4.2.1 Adatptable information\n\nTable [2]Table 2 ‣ 4.1 Quantitative Results ‣ 4 Results ‣ Following the Human Thread in Social Navigation\") presents the results from Stage 1 (S1) and Stage 2 (S2) with the utilization of various privileged information, such as Humanoid GPS (hGPS) and human trajectories (traj.). During S1, particularly in S𝑆S and notably in S​P​S𝑆𝑃𝑆SPS, incorporating hGPS as an additional input leads to superior results. This advantage is likely attributed to hGPS containing implicit information about human and robot positions, facilitating more efficient path selection, especially in S​P​S𝑆𝑃𝑆SPS scenarios.\n\nHowever, this pattern is not evident in S2, where trajectories typically provide more adaptable information. As previously mentioned, hGPS inherently encompasses the robot’s position, posing challenges in regressing this data during the second stage due to the lack of initial context regarding the robot’s location relative to the environment. Furthermore, hGPS may be difficult to adapt when the human is detected and disappears around a wall. Since hGPS comprises polar coordinates, the distance between the robot and the human spans the wall. This issue does not arise when utilizing trajectories, as they do not require any information about the robot and can be adapted solely based on depth images and detection information.\n\nFig. [3]Figure 3 ‣ 4.1 Quantitative Results ‣ 4 Results ‣ Following the Human Thread in Social Navigation\")(left) illustrates the trend of the First encounter step over episode during Stage 2. The plot confirms that using trajectories facilitates the robot to find the person, which it achieves after only approx. 450 steps, while the hGPS and hGPS+traj take more than 700 steps. Finding the robot first results in higher S𝑆S and S​P​S𝑆𝑃𝑆SPS metrics, but it may incur larger chances of collision (C​R𝐶𝑅CR metric), due to having to then follow it for longer, cf. Sec. [4.1]Quantitative Results ‣ 4 Results ‣ Following the Human Thread in Social Navigation\").\n\nFig. [3]Figure 3 ‣ 4.1 Quantitative Results ‣ 4 Results ‣ Following the Human Thread in Social Navigation\")(right) illustrates the average distance between the agent and the humanoid after the first encounter. While hGPS and hGPS+traj stay at approx. 4 meters, the proposed trajectory-based approach ranges between 1.5 and 1.9, thus well within the 1-2 meter range, which yields the success in the task of following (larger F𝐹F metric, but encompassing a larger risk of collision– C​R𝐶𝑅CR metric).\n\nTable 3: Ablation on the length of trajectories to consider during Stage 1\n\n| Timeframes | S ↑↑\\\\uparrow | SPS ↑↑\\\\uparrow | F ↑↑\\\\uparrow | CR ↓↓\\\\downarrow | ES ↑↑\\\\uparrow |\n| --- | --- | --- | --- | --- | --- |\n| 5 | 0.62±0.01 | 0.25±0.02 | 0.05±0.01 | 0.64±0.01 | 0.06±0.01 |\n| 20 (Proposed) | 0.92±0.00 | 0.46±0.01 | 0.44±0.02 | 0.61±0.02 | 0.50±0.01 |\n| 50 | 0.70±0.02 | 0.29±0.02 | 0.08±0.02 | 0.78±0.02 | 0.08±0.01 |\n\n\\\\includegraphics\n\n\\[width=\\]figures/qualitative\\_strategy3.png\n\nFigure 4:\nThe agent and the humanoid start the episode in separate rooms. The agent navigates through the environment in search of the humanoid, and once found, begins to follow it.\n\n#### 4.2.2 Length of trajectories\n\nTable [3]Table 3 ‣ 4.2.1 Adatptable information ‣ 4.2 Ablation studies ‣ 4 Results ‣ Following the Human Thread in Social Navigation\") illustrates the influence of trajectory length on our SDA. Employing 5 past timeframes as input yields generally inferior results, possibly due to the insufficient historical data to capture human dynamics. Similarly, using 50 timeframes leads to comparable outcomes. Although S𝑆S, S​P​S𝑆𝑃𝑆SPS, and F𝐹F metrics improve relative to the 5-frame scenario, they still lag behind our proposed model. This could be attributed to potential redundancy and counterproductive encoding of information.\n\n\\\\includegraphics\n\n\\[width=.48\\]figures/qualitative0.pdf\n\\\\includegraphics\\[width=.48\\]figures/qualitative1.pdf\n\nFigure 5: We showcase two different episodes. On the left, the agent successfully follows the human after it swiftly moves in front of the door. On the right, an episode where the human decides to move backward and the agent steps back to make way.\n\n### 4.3 Qualitative Results\n\nWe qualitatively demonstrate the results in our proposed SDA. Firstly, we showcase the agent’s ability to locate the humanoid within the environment by moving around, followed by its capability to follow the humanoid within the environment. Subsequently, we present two specific behaviors where the agent briefly spots the humanoid and one where it moves backward to create space for passage.\n\nFig. [4]Figure 4 ‣ 4.2.1 Adatptable information ‣ 4.2 Ablation studies ‣ 4 Results ‣ Following the Human Thread in Social Navigation\") shows an episode where the agent and the human are located in different rooms at the start. Then, the agent begins its search for the humanoid by navigating within the environment until the encounter takes place. After the encounter, the agent then transitions into the follow phase.\n\nThe episode in Fig. [5]Figure 5 ‣ 4.2.2 Length of trajectories ‣ 4.2 Ablation studies ‣ 4 Results ‣ Following the Human Thread in Social Navigation\") (left) illustrates the agent’s capability to track the human even when it is briefly observed. As the agent searches for the target in the bathroom, the humanoid swiftly passes in front of the door (Step 145) and disappears from the agent’s view again (Step 150). Due to learned social dynamics, the agent exploits the humanoid’s behavior and begins to follow it.\n\nIn the right episode in Fig. [5]Figure 5 ‣ 4.2.2 Length of trajectories ‣ 4.2 Ablation studies ‣ 4 Results ‣ Following the Human Thread in Social Navigation\"), the agent has already located the human and its objective is to follow it. It is observed that at Step 340, the human decides to move backward, prompting the agent to move backward as well, creating the necessary space for passage by Step 360. Then, it continues its task of following.\n\n##### Limitations.\n\nTable [1]\\], has greatly minimized the domain gap between simulated and real environments.",
+      "citations": [
+        {
+          "start_pos": 584,
+          "end_pos": 588,
+          "text": "[36]",
+          "paper_id": "bib.bib36",
+          "single_citation": true,
+          "citation_type": "method",
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 968,
+          "end_pos": 972,
+          "text": "[34]",
+          "paper_id": "bib.bib34",
+          "single_citation": true,
+          "citation_type": "method",
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1247,
+          "end_pos": 1251,
+          "text": "[36]",
+          "paper_id": "bib.bib36",
+          "single_citation": true,
+          "citation_type": "method",
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1836,
+          "end_pos": 1840,
+          "text": "[36]",
+          "paper_id": "bib.bib36",
+          "single_citation": true,
+          "citation_type": "others",
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 1901,
+          "end_pos": 1905,
+          "text": "[48]",
+          "paper_id": "bib.bib48",
+          "single_citation": true,
+          "citation_type": "method",
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 2508,
+          "end_pos": 2511,
+          "text": "[9]",
+          "paper_id": "bib.bib9",
+          "single_citation": true,
+          "citation_type": "others",
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 2550,
+          "end_pos": 2554,
+          "text": "[36]",
+          "paper_id": "bib.bib36",
+          "single_citation": true,
+          "citation_type": "others",
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 3543,
+          "end_pos": 3547,
+          "text": "[36]",
+          "paper_id": "bib.bib36",
+          "single_citation": true,
+          "citation_type": "others",
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 5162,
+          "end_pos": 5171,
+          "text": "Table [1]",
+          "paper_id": "bib.bib36",
+          "single_citation": true,
+          "citation_type": "others",
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 6743,
+          "end_pos": 6747,
+          "text": "[36]",
+          "paper_id": "bib.bib36",
+          "single_citation": true,
+          "citation_type": "others",
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 7778,
+          "end_pos": 7782,
+          "text": "[36]",
+          "paper_id": "bib.bib36",
+          "single_citation": true,
+          "citation_type": "others",
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 7815,
+          "end_pos": 7819,
+          "text": "[36]",
+          "paper_id": "bib.bib36",
+          "single_citation": true,
+          "citation_type": "others",
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 7892,
+          "end_pos": 7895,
+          "text": "[9]",
+          "paper_id": "bib.bib9",
+          "single_citation": true,
+          "citation_type": "others",
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 7939,
+          "end_pos": 7942,
+          "text": "[9]",
+          "paper_id": "bib.bib9",
+          "single_citation": true,
+          "citation_type": "others",
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 8074,
+          "end_pos": 8078,
+          "text": "[36]",
+          "paper_id": "bib.bib36",
+          "single_citation": true,
+          "citation_type": "others",
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 8149,
+          "end_pos": 8152,
+          "text": "[9]",
+          "paper_id": "bib.bib9",
+          "single_citation": true,
+          "citation_type": "others",
+          "nearest_citations": null
+        },
+        {
+          "start_pos": 15535,
+          "end_pos": 15544,
+          "text": "Table [1]",
+          "paper_id": "bib.bib36",
+          "single_citation": true,
+          "citation_type": "others",
+          "nearest_citations": null
+        }
+      ]
+    },
+    "5 Conclusions": {
+      "content": "Our study presents the Social Dynamics Adaptation model (SDA) for Social Navigation within interactive settings. Notably, it is the first to integrate privileged human dynamics information during training while adapting it in the following stage, enabling its application in realistic environments without relying on such privileged information. Our findings underscore the non-trivial nature of adapting information, highlighting the necessity for selective processes. In future research, we aim to extend our model by incorporating diverse human dynamics beyond trajectories, enhancing the robot’s comprehension of human movement patterns.",
+      "citations": []
+    }
+  },
+  "references": {
+    "data": {},
+    "key_map": {}
+  }
+}
